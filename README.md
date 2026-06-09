@@ -1,64 +1,68 @@
-# 🤖 UpFox - Discord Administration & Utility Bot
+# 🤖 Bot Discord de Gestion de Clan
 
-UpFox est un bot Discord modulaire développé en **JavaScript** avec la bibliothèque **Discord.js (v14+)**. Il a été conçu pour automatiser l'accueil des membres, gérer des systèmes d'attribution de rôles par réaction, et fournir des outils de modération et d'administration avancés pour les salons textuels.
+Un bot Discord polyvalent développé en **JavaScript** avec **Node.js** et la bibliothèque **Discord.js (v14)**. Ce bot est conçu pour animer, modérer et gérer de manière automatisée un serveur Discord communautaire.
 
-Ce projet applique les bonnes pratiques d'architecture événementielle et de gestion des permissions asynchrones (Promises, async/await).
-
----
-
-## 🛠️ Stack Technique & Prérequis
-
-* **Environnement de reexécution :** Node.js (v16.11.0+)
-* **Bibliothèque principale :** `discord.js`
-* **Gestion de l'environnement :** `dotenv` (pour la sécurisation du token de l'API Discord)
-* **Intents requis (Gateway) :**
-  * `Guilds` (Structure du serveur)
-  * `GuildMessages` (Lecture/Envoi de messages)
-  * `MessageContent` (Accès au texte brut des commandes)
-  * `GuildMembers` (Événements de membres et gestion des rôles)
-  * `GuildMessageReactions` (Détection des clics sur les émojis)
-* **Partials activés :** `GuildMember`, `User`, `Message`, `Reaction` (assure l'écoute sur les anciens messages hors-cache).
+Dans le cadre d'une démarche d'apprentissage en **BUT Informatique**, ce projet met l'accent sur les bonnes pratiques de développement, la sécurité des données sensibles et l'automatisation du déploiement via l'intégration continue (CI/CD).
 
 ---
 
-## 📂 Fonctionnalités du Projet
+## 🚀 Fonctionnalités
 
-Le cycle de vie du bot est divisé en plusieurs gestionnaires d'événements majeurs :
+### 🎉 Accueil & Communauté
+* **Souhaits de bienvenue :** Envoie automatiquement un message d'accueil personnalisé dans un salon spécifique à l'arrivée d'un nouveau membre.
+* **Messages de départ :** Signale le départ d'un membre avec humour.
 
-### 1. Gestion des Membres (`guildMemberAdd` / `guildMemberRemove`)
-* **Accueil automatisé :** Envoie un message de bienvenue personnalisé aux nouveaux utilisateurs dans un salon spécifique (`ID_SALON_BIENVENUE`).
-* **Suivi des départs :** Notifie le départ d'un membre en affichant son `displayName` serveur.
+### 🎮 Divertissement & Intégrations
+* `!hello` : Salue l'utilisateur en affichant son pseudonyme et son nom d'affichage global.
+* `!roll` : Simule le lancer d'un dé à 6 faces (`🎲 Résultat : 1 à 6`).
+* **Réactions automatiques :** Ajoute automatiquement une réaction émoji personnalisée sous chaque message contenant l'émoji cible défini.
 
-### 2. Système de Commandes Centralisé (`messageCreate`)
-Les commandes et processus passifs au sein du salon textuel sont segmentés en trois catégories distinctes :
-
-#### 🔄 Partie Automatique (Passive)
-* **Réaction Émoji :** Détecte la présence d'un émoji personnalisé (`emojiPanneau`) dans n'importe quel message du serveur et y ajoute automatiquement une réaction identique.
-
-#### 👤 Partie Client (Tout utilisateur)
-* `!hello` : Salue l'utilisateur en retour en affichant son nom d'utilisateur global ainsi que son pseudo d'affichage spécifique au serveur.
-* `!roll` : Génère un nombre pseudo-aléatoire entre 1 et 6 inclus (`Math.random()`) et répond sous forme de lancer de dé.
-
-#### 🛡️ Partie Admin & Modération (Permissions requises)
-* `!message [#salon] [texte]` : *(Permission : Gérer les messages)* Permet à un modérateur d'envoyer un message anonymisé via le bot dans le salon ciblé. La commande initiale est supprimée pour garder le salon propre.
-* `!react [ID_Message] [:emoji:] [@Role]` : *(Permission : Gérer les rôles)* Initialise un système persistant de **Reaction Role** à l'aide d'un `ReactionCollector`. Ajouter la réaction attribue le rôle ciblé, la retirer supprime le rôle.
-* `!muteAll` : *(Permission : Administrateur)* Modifie les permissions locales du salon actuel via l'ACL (`permissionOverwrites`) pour interdire l'envoi de messages au rôle `@everyone`. Les administrateurs conservent le droit d'écriture.
-* `!unmuteAll` : *(Permission : Administrateur)* Réinitialise les permissions d'écriture du salon actuel pour le rôle `@everyone` (remise à `null`).
-* `!clear [nombre]` : *(Permission : Administrateur)* Supprime les *n* derniers messages d'un salon. Comprend un système de confirmation par `MessageCollector` (`!ok` / `!cancel`). Un algorithme de filtrage temporel exclut automatiquement les messages de plus de 14 jours pour éviter les crashs de l'API Discord.
+### 🛡️ Modération & Administration (Réservé aux Modérateurs)
+* `!message #salon <texte>` : Permet à un modérateur d'envoyer un message officiel anonymisé dans le salon textuel de son choix.
+* `!react #salon <ID_Message> :emoji: @Role` : Configure un système de **Reaction Role**. Les utilisateurs qui cliquent sur la réaction reçoivent le rôle, et le rôle leur est retiré s'ils l'enlèvent.
+* `!muteAll` : Verrouille le salon textuel actuel en retirant la permission d'écrire au rôle `@everyone`.
+* `!unmuteAll` : Déverrouille le salon textuel actuel.
+* `!clear <1-99>` : Supprime en masse un nombre défini de messages récents (avec système de confirmation de sécurité `!ok` / `!cancel` et protection contre le crash des messages de plus de 14 jours).
 
 ---
 
-## 🚀 Comment relancer le projet ?
+## 🔒 Sécurité & Bonnes Pratiques
 
-1. Installez les dépendances du projet :
-```bash
-   npm install discord.js dotenv
-   ```
-2. Possède un fichier .env contenant :
-```bash
+Ce projet applique strictement le principe du **Zéro Confiance** :
+1. **Masquage des Secrets :** Le jeton privé du bot (`DISCORD_TOKEN`) n'est jamais écrit en dur dans le code. Il est stocké localement dans un fichier `.env` et configuré à distance via les **GitHub Secrets**.
+2. **Ignorance de fichiers (.gitignore) :** Le dossier lourd `node_modules/` et le fichier sensible `.env` sont explicitement exclus du suivi de version Git pour éviter toute fuite accidentelle sur Internet.
+3. **Principe du Moindre Privilège :** Le bot ne possède pas la permission générale *Administrateur*. Ses droits sont limités aux permissions strictes requises par son code (`Envoyer des messages`, `Gérer les messages`, `Gérer les rôles`, etc.).
+4. **Gestion de la Robustesse :** Utilisation intensive de blocs `try / catch` et écoute de l'événement système `unhandledRejection` pour capturer les exceptions et éviter les crashs inopinés de l'application.
+
+---
+
+## ⚙️ Déploiement Continu (H24 / 7j7)
+
+Le bot est hébergé de manière automatisée et gratuite via **GitHub Actions** (CI/CD) sous un environnement virtuel `Ubuntu (Linux)`. 
+
+Le workflow configuré dans `.github/workflows/bot.yml` réalise les actions suivantes :
+* Se déclenche à chaque mise à jour (`git push`) sur la branche `main`.
+* Installe l'environnement Node.js (v20) et télécharge les dépendances exactes via `npm ci` (grâce au fichier de verrouillage `package-lock.json`).
+* S'exécute en continu et planifie un redémarrage transparent toutes les 5 heures via un déclencheur planifié (`cron`) pour contourner les limitations de temps des serveurs éphémères de GitHub.
+
+---
+
+## 🛠️ Installation en Local
+
+Pour tester ou modifier ce projet sur votre ordinateur :
+
+1. Clonez le dépôt :
+   ```bash
+   git clone [https://github.com/votre-pseudo/votre-repo.git](https://github.com/votre-pseudo/votre-repo.git)
+   cd nom-du-dossier
+2. npm install
+3. dans un fichier .env :
    DISCORD_TOKEN=votre_token_secret_ici
-   ```
-3. Lance le bot :
+4. node index.js
+5. 
+### Prochaine étape :
+Une fois que tu as collé cela dans ton `README.md` et que ton fichier `.github/workflows/bot.yml` est créé, tu pourras faire ton premier push global en sécurité :
 ```bash
-   node index.js
-   ```
+git add .
+git commit -m "Mise au propre et documentation README"
+git push
