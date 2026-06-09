@@ -4,9 +4,6 @@ on:
   push:
     branches: [ main ]
   schedule:
-    # GitHub Actions coupe automatiquement les scripts après quelques heures d'exécution continue.
-    # Ce paramètre ("cron") indique à GitHub de relancer une machine neuve toutes les 5 heures
-    # de manière totalement transparente, assurant un bot H24.
     - cron: '0 */5 * * *'
 
 jobs:
@@ -14,20 +11,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Récupérer le code du dépôt
-      uses: actions/checkout@v4
+      - name: Récupérer le code du dépôt
+        uses: actions/checkout@v4
 
-    - name: Installer Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
-    - name: Installer les modules Node
-      run: npm ci
+      - name: Installer les modules Node
+        run: npm ci
 
-    - name: Lancer le bot Discord
-      env:
-        # On injecte de manière sécurisée la clé que tu as configurée dans les GitHub Secrets
-        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-      run: node index.js
+      - name: Installer PM2 (Gestionnaire de processus)
+        run: npm install -g pm2
+
+      - name: Lancer le bot Discord en tâche de fond
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        run: pm2 start index.js --name "mon-bot"
+
+      - name: Afficher les logs de démarrage
+        run: pm2 logs --lines 10 --no-daemon
