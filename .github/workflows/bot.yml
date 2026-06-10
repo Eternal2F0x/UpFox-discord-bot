@@ -33,4 +33,4 @@ jobs:
         run: pm2 start index.js --name "mon-bot"
 
       - name: Afficher les logs de démarrage
-        run: pm2 logs "mon-bot" --lines 50 --flush
+        run: pm2 logs "mon-bot" --lines 50 --raw
