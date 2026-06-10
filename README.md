@@ -65,4 +65,4 @@ Une fois que tu as collé cela dans ton `README.md` et que ton fichier `.github/
 ```bash
 git add .
 git commit -m "Mise au propre et documentation README"
-git push
+git push ```
