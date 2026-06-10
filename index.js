@@ -147,7 +147,7 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     // #region PARTIE AUTOMATIQUE (Exécution passive sur les messages)
-    const emojiPanneau = "<:emoji_13:1513814609604120677>";
+    const emojiPanneau = "<:Happy_sign:1514169900179128380>";
 
     if (message.content.includes(emojiPanneau)) {
         try {
