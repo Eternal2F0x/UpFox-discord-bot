@@ -1,5 +1,5 @@
 // #region Configuration du BOT
-require('dotenv').config(); // Corrigé : rquire -> require
+require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 
@@ -21,6 +21,10 @@ const client = new Client({
 
 const PREFIX = '!';
 const ID_SALON_BIENVENUE = "1408157176316559420";
+const ID_SALON_ANNONCES = "1407775485093478593"; // Ton salon d'annonces / NewsChannel
+
+// Variables de mémoire pour éviter le spam des alertes automatiques
+let twitchIsLive = false; 
 
 /**
  * FONCTION UTILITAIRE : Récupérer le token d'accès OAuth2 de Twitch
@@ -41,9 +45,72 @@ async function getTwitchAccessToken() {
     }
 }
 
-// Événement au démarrage du bot
-client.once('ready', () => {
+// Événement au démarrage du bot (Mis à jour vers 'clientReady' pour Discord.js v14+)
+client.once('clientReady', () => {
     console.log(`🤖 Bot connecté avec succès en tant que ${client.user.tag}!`);
+
+    // 🔄 LANCEMENT DE L'AUTOMATE TWITCH (Vérification toutes les 5 minutes)
+    console.log("⏱️ [Automate] Boucle de vérification Twitch initialisée.");
+    
+    setInterval(async () => {
+        console.log("🔄 [Automate] Vérification du statut Twitch en cours...");
+        try {
+            const channelName = process.env.TWITCH_CHANNEL_NAME;
+            const token = await getTwitchAccessToken();
+            
+            if (!token) {
+                console.log("❌ [Automate] Échec de la vérification : Impossible d'obtenir le token.");
+                return;
+            }
+
+            // Requête Helix Twitch
+            const response = await axios.get(`https://api.twitch.tv/helix/streams`, {
+                headers: {
+                    'Client-ID': process.env.TWITCH_CLIENT_ID,
+                    'Authorization': `Bearer ${token}`
+                },
+                params: { user_login: channelName }
+            });
+
+            const streamData = response.data.data;
+
+            // Récupération sécurisée du salon (Cache, sinon Fetch API)
+            let salonAnnonces = client.channels.cache.get(ID_SALON_ANNONCES);
+            if (!salonAnnonces) {
+                salonAnnonces = await client.channels.fetch(ID_SALON_ANNONCES);
+            }
+
+            if (streamData && streamData.length > 0) {
+                console.log(`📡 [Automate] Twitch détecte que ${channelName} est en LIVE !`);
+                
+                if (!twitchIsLive) { 
+                    twitchIsLive = true; // On verrouille la mémoire pour ne pas spammer
+                    
+                    const live = streamData[0];
+                    const thumbnailUrl = live.thumbnail_url.replace('{width}', '1280').replace('{height}', '720');
+
+                    const embed = new EmbedBuilder()
+                        .setColor('#6441a5')
+                        .setTitle(`🎮 ALERTE LIVE : ${channelName} est en stream !`)
+                        .setURL(`https://twitch.tv/${channelName}`)
+                        .setDescription(`**Titre :** ${live.title}\n**Jeu :** ${live.game_name}`)
+                        .setImage(thumbnailUrl)
+                        .setTimestamp();
+
+                    await salonAnnonces.send({ content: "@everyone Le clan est en live ! ⚔️", embeds: [embed] });
+                    console.log("✅ [Automate] Message d'alerte envoyé sur Discord !");
+                } else {
+                    console.log("ℹ️ [Automate] Le live est toujours en cours, alerte déjà envoyée.");
+                }
+            } else {
+                console.log(`💤 [Automate] ${channelName} est hors ligne.`);
+                twitchIsLive = false; // On réinitialise la mémoire quand le live coupe
+            }
+
+        } catch (error) {
+            console.error("❌ [Automate] Erreur lors de la vérification automatique :", error.message);
+        }
+    }, 300000); // 300000 ms = 5 minutes
 });
 // #endregion
 
@@ -64,7 +131,7 @@ client.on('guildMemberRemove', async (member) => {
         const salon = member.guild.channels.cache.get(ID_SALON_BIENVENUE);
         if (!salon) return;
 
-        // Sécurité : Si le membre n'a plus de displayName dans le cache, on se rabat sur son username global
+        // Sécurité si le membre vient d'être banni/kick (données de cache incomplètes)
         const nomUtilisateur = member.user ? member.user.username : "Un membre";
 
         await salon.send(`Oh, ${nomUtilisateur} a quitté le clan. 😢 Il n'était pas assez digne ⚔️`);
@@ -73,64 +140,6 @@ client.on('guildMemberRemove', async (member) => {
     }
 });
 // #endregion
-
-// #region nouveaux live
-// Variables d'état pour l'automatisation
-const ID_SALON_ANNONCES = "1407775485093478593"; // Remplace par l'ID du salon où poster les alertes
-let twitchIsLive = false; // Permet de se souvenir si on a déjà envoyé l'alerte live
-
-// Fonction automatique qui s'exécute toutes les 5 minutes (300 000 ms)
-setInterval(async () => {
-    // Sécurité : on s'assure que le bot est bien connecté avant de chercher le salon
-    if (!client.readyAt) return; 
-
-    try {
-        const channelName = process.env.TWITCH_CHANNEL_NAME;
-        const token = await getTwitchAccessToken();
-        if (!token) return;
-
-        // Requête API Twitch
-        const response = await axios.get(`https://api.twitch.tv/helix/streams`, {
-            headers: {
-                'Client-ID': process.env.TWITCH_CLIENT_ID,
-                'Authorization': `Bearer ${token}`
-            },
-            params: { user_login: channelName }
-        });
-
-        const streamData = response.data.data;
-        const salonAnnonces = client.channels.cache.get(ID_SALON_ANNONCES);
-        if (!salonAnnonces) return console.error("Salon d'annonces introuvable.");
-
-        if (streamData && streamData.length > 0) {
-            // Le stream est en ligne !
-            if (!twitchIsLive) { 
-                // Si on n'avait pas encore envoyé l'alerte pour ce live
-                twitchIsLive = true; // On verrouille pour ne pas spammer
-                
-                const live = streamData[0];
-                const thumbnailUrl = live.thumbnail_url.replace('{width}', '1280').replace('{height}', '720');
-
-                const embed = new EmbedBuilder()
-                    .setColor('#6441a5')
-                    .setTitle(`🎮 ALERTE LIVE : ${channelName} est en stream !`)
-                    .setURL(`https://twitch.tv/${channelName}`)
-                    .setDescription(`**Titre :** ${live.title}\n**Jeu :** ${live.game_name}`)
-                    .setImage(thumbnailUrl)
-                    .setTimestamp();
-
-                await salonAnnonces.send({ content: "@everyone Le clan est en live ! ⚔️", embeds: [embed] });
-            }
-        } else {
-            // Le stream est hors ligne
-            twitchIsLive = false; // On réinitialise la mémoire pour le prochain live
-        }
-
-    } catch (error) {
-        console.error("Erreur lors de la vérification automatique Twitch :", error.message);
-    }
-}, 300000); // 5 minutes en millisecondes
-//#endregion
 
 // #region Command et Réact
 client.on('messageCreate', async (message) => {
@@ -159,7 +168,7 @@ client.on('messageCreate', async (message) => {
         return message.reply(`🎲 Tu as lancé un dé et tu as obtenu un **${resultatDe}** !`);
     }
 
-    // Commande !twitch
+    // Commande manuelle !twitch
     if (message.content === PREFIX + 'twitch') {
         try {
             const channelName = process.env.TWITCH_CHANNEL_NAME;
@@ -175,9 +184,7 @@ client.on('messageCreate', async (message) => {
                     'Client-ID': process.env.TWITCH_CLIENT_ID,
                     'Authorization': `Bearer ${token}`
                 },
-                params: {
-                    user_login: channelName
-                }
+                params: { user_login: channelName }
             });
 
             const streamData = response.data.data;
@@ -185,9 +192,7 @@ client.on('messageCreate', async (message) => {
 
             if (streamData && streamData.length > 0) {
                 const live = streamData[0];
-                const thumbnailUrl = live.thumbnail_url
-                    .replace('{width}', '1280')
-                    .replace('{height}', '720');
+                const thumbnailUrl = live.thumbnail_url.replace('{width}', '1280').replace('{height}', '720');
 
                 embed.setTitle(`🟣 Je suis en LIVE sur Twitch !`)
                      .setDescription(`**Titre :** ${live.title}\n**Jeu :** ${live.game_name}\n**Spectateurs :** ${live.viewer_count} 👥`)
@@ -207,7 +212,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // Commande !youtube
+    // Commande manuelle !youtube
     if (message.content === PREFIX + 'youtube') {
         try {
             const apiKey = process.env.YOUTUBE_API_KEY;
