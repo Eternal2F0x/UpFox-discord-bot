@@ -64,9 +64,12 @@ client.on('guildMemberRemove', async (member) => {
         const salon = member.guild.channels.cache.get(ID_SALON_BIENVENUE);
         if (!salon) return;
 
-        await salon.send(`Oh, ${member.user.displayName} a quitté le clan. 😢 Il n'était pas assez digne ⚔️`);
+        // Sécurité : Si le membre n'a plus de displayName dans le cache, on se rabat sur son username global
+        const nomUtilisateur = member.user ? member.user.username : "Un membre";
+
+        await salon.send(`Oh, ${nomUtilisateur} a quitté le clan. 😢 Il n'était pas assez digne ⚔️`);
     } catch (error) {
-        console.error("Erreur lors de l'envoi du message de départ :", error);
+        console.error("Erreur lors de l'envoi du message de départ :", error.message);
     }
 });
 // #endregion
