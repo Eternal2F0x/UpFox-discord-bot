@@ -110,7 +110,7 @@ client.once('clientReady', () => {
         } catch (error) {
             console.error("❌ [Automate] Erreur lors de la vérification automatique :", error.message);
         }
-    }, 300000); // 300000 ms = 5 minutes
+    }, 120000); // 120000 ms = 2 minutes
 });
 // #endregion
 
