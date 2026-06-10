@@ -1,5 +1,7 @@
 // #region Configuration du BOT
-const { Client, GatewayIntentBits, Partials, PermissionFlagsBits } = require('discord.js');
+require('dotenv').config(); // Corrigé : rquire -> require
+const { Client, GatewayIntentBits, Partials, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const axios = require('axios');
 
 const client = new Client({
     intents: [
@@ -17,11 +19,31 @@ const client = new Client({
     ]
 });
 
+const PREFIX = '!';
 const ID_SALON_BIENVENUE = "1408157176316559420";
 
-// CORRECTION ICI : L'événement s'appelle 'ready' et non 'clientReady'
+/**
+ * FONCTION UTILITAIRE : Récupérer le token d'accès OAuth2 de Twitch
+ */
+async function getTwitchAccessToken() {
+    try {
+        const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
+            params: {
+                client_id: process.env.TWITCH_CLIENT_ID,
+                client_secret: process.env.TWITCH_CLIENT_SECRET,
+                grant_type: 'client_credentials'
+            }
+        });
+        return response.data.access_token;
+    } catch (error) {
+        console.error("Erreur lors de la récupération du token Twitch :", error.message);
+        return null;
+    }
+}
+
+// Événement au démarrage du bot
 client.once('ready', () => {
-    console.log(`\n🤖 Bot connecté avec succès en tant que ${client.user.tag}!`);
+    console.log(`🤖 Bot connecté avec succès en tant que ${client.user.tag}!`);
 });
 // #endregion
 
@@ -51,7 +73,7 @@ client.on('guildMemberRemove', async (member) => {
 
 // #region Command et Réact
 client.on('messageCreate', async (message) => {
-    let admin = message.member.permissions.has(PermissionFlagsBits.ManageMessages)
+    let admin = message.member.permissions.has(PermissionFlagsBits.ManageMessages);
     if (message.author.bot) return;
 
     // #region PARTIE AUTOMATIQUE (Exécution passive sur les messages)
@@ -67,20 +89,112 @@ client.on('messageCreate', async (message) => {
     // #endregion
 
     // #region PARTIE CLIENT (Accessibles à n'importe quel utilisateur)
-    if (message.content === '!hello') {
+    if (message.content === PREFIX + 'hello') {
         return message.channel.send(`Salut ${message.author.username} alias ${message.author.displayName} !👋`);
     }
 
-    if (message.content === '!roll') {
+    if (message.content === PREFIX + 'roll') {
         const resultatDe = Math.floor(Math.random() * 6) + 1;
         return message.reply(`🎲 Tu as lancé un dé et tu as obtenu un **${resultatDe}** !`);
+    }
+
+    // Commande !twitch
+    if (message.content === PREFIX + 'twitch') {
+        try {
+            const channelName = process.env.TWITCH_CHANNEL_NAME;
+            const twitchUrl = `https://twitch.tv/${channelName}`;
+            
+            const token = await getTwitchAccessToken();
+            if (!token) {
+                return message.reply("❌ Impossible de se connecter à l'API Twitch actuellement.");
+            }
+
+            const response = await axios.get(`https://api.twitch.tv/helix/streams`, {
+                headers: {
+                    'Client-ID': process.env.TWITCH_CLIENT_ID,
+                    'Authorization': `Bearer ${token}`
+                },
+                params: {
+                    user_login: channelName
+                }
+            });
+
+            const streamData = response.data.data;
+            const embed = new EmbedBuilder().setColor('#6441a5');
+
+            if (streamData && streamData.length > 0) {
+                const live = streamData[0];
+                const thumbnailUrl = live.thumbnail_url
+                    .replace('{width}', '1280')
+                    .replace('{height}', '720');
+
+                embed.setTitle(`🟣 Je suis en LIVE sur Twitch !`)
+                     .setDescription(`**Titre :** ${live.title}\n**Jeu :** ${live.game_name}\n**Spectateurs :** ${live.viewer_count} 👥`)
+                     .setURL(twitchUrl)
+                     .setImage(thumbnailUrl);
+            } else {
+                embed.setTitle(`⚫ Chaîne Twitch de ${channelName}`)
+                     .setDescription(`Je ne suis pas en live pour le moment. Rejoins la communauté pour ne pas rater le prochain stream !`)
+                     .setURL(twitchUrl);
+            }
+
+            return message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error("Erreur lors de la commande !twitch :", error.message);
+            return message.reply("⚠️ Une erreur est survenue lors de la récupération des informations Twitch.");
+        }
+    }
+
+    // Commande !youtube
+    if (message.content === PREFIX + 'youtube') {
+        try {
+            const apiKey = process.env.YOUTUBE_API_KEY;
+            const channelId = process.env.YOUTUBE_CHANNEL_ID;
+
+            const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+                params: {
+                    key: apiKey,
+                    channelId: channelId,
+                    part: 'snippet',
+                    order: 'date',
+                    maxResults: 1,
+                    type: 'video'
+                }
+            });
+
+            const videos = response.data.items;
+
+            if (!videos || videos.length === 0) {
+                return message.reply("📺 Aucune vidéo publique n'a été trouvée sur cette chaîne YouTube.");
+            }
+
+            const latestVideo = videos[0];
+            const videoId = latestVideo.id.videoId;
+            const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+            const videoTitle = latestVideo.snippet.title;
+            const videoThumbnail = latestVideo.snippet.thumbnails.high.url;
+
+            const embed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle(`🔴 Dernière vidéo YouTube : ${videoTitle}`)
+                .setURL(videoUrl)
+                .setDescription(`Découvre notre tout dernier contenu fraîchement publié sur la chaîne !`)
+                .setImage(videoThumbnail);
+
+            return message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error("Erreur lors de la commande !youtube :", error.message);
+            return message.reply("⚠️ Une erreur est survenue lors de la récupération de la vidéo YouTube.");
+        }
     }
     // #endregion
 
     // #region PARTIE ADMIN (Réservée aux modérateurs et administrateurs)
 
     // Commandes de Modération (!message et !react)
-    if (message.content.startsWith('!message') && admin) {
+    if (message.content.startsWith(PREFIX + 'message') && admin) {
         const args = message.content.slice('!message'.length).trim().split(/ +/);
         const salonCible = message.mentions.channels.first();
         args.shift();
@@ -99,7 +213,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    else if (message.content.startsWith('!react') && admin) {
+    else if (message.content.startsWith(PREFIX + 'react') && admin) {
         const args = message.content.slice('!react'.length).trim().split(/ +/);
         const salonCible = message.mentions.channels.first();
         args.shift();
@@ -151,7 +265,7 @@ client.on('messageCreate', async (message) => {
     }
 
     // Commandes d'Administration Pure (!muteAll, !unmuteAll, !clear)
-    else if (message.content === '!muteAll') {
+    else if (message.content === PREFIX + 'muteAll') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return message.reply("❌ Seuls les administrateurs peuvent utiliser cette commande.");
         }
@@ -166,7 +280,7 @@ client.on('messageCreate', async (message) => {
             message.reply("❌ Je n'ai pas pu verrouiller le salon.");
         }
     }
-    else if (message.content === '!unmuteAll') {
+    else if (message.content === PREFIX + 'unmuteAll') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return message.reply("❌ Seuls les administrateurs peuvent utiliser cette commande.");
         }
@@ -181,7 +295,7 @@ client.on('messageCreate', async (message) => {
             message.reply("❌ Je n'ai pas pu déverrouiller le salon.");
         }
     }
-    else if (message.content.startsWith('!clear')) {
+    else if (message.content.startsWith(PREFIX + 'clear')) {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return message.reply("❌ Seuls les administrateurs peuvent utiliser cette commande.");
         }
