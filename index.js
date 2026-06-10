@@ -71,6 +71,7 @@ client.on('guildMemberRemove', async (member) => {
 });
 // #endregion
 
+// #region nouveaux live
 // Variables d'état pour l'automatisation
 const ID_SALON_ANNONCES = "1407775485093478593"; // Remplace par l'ID du salon où poster les alertes
 let twitchIsLive = false; // Permet de se souvenir si on a déjà envoyé l'alerte live
@@ -126,6 +127,7 @@ setInterval(async () => {
         console.error("Erreur lors de la vérification automatique Twitch :", error.message);
     }
 }, 300000); // 5 minutes en millisecondes
+//#endregion
 
 // #region Command et Réact
 client.on('messageCreate', async (message) => {

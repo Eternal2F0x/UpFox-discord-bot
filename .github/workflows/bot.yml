@@ -1,5 +1,10 @@
 name: Run Discord Bot H24
 
+# Bloc de gestion de la concurrence pour stopper l'ancien bot à chaque nouveau push
+concurrency:
+  group: bot-discord-clan
+  cancel-in-progress: true
+
 on:
   push:
     branches: [ main ]
