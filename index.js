@@ -97,7 +97,7 @@ client.once('clientReady', () => {
                         .setImage(thumbnailUrl)
                         .setTimestamp();
 
-                    await salonAnnonces.send({ content: "@everyone Le clan est en live ! ⚔️", embeds: [embed] });
+                    await salonAnnonces.send({ content: "<@&1408165714757550130> Le clan est en live ! ⚔️", embeds: [embed] });
                     console.log("✅ [Automate] Message d'alerte envoyé sur Discord !");
                 } else {
                     console.log("ℹ️ [Automate] Le live est toujours en cours, alerte déjà envoyée.");
@@ -243,7 +243,7 @@ client.on('messageCreate', async (message) => {
 
             const embed = new EmbedBuilder()
                 .setColor('#FF0000')
-                .setTitle(`🔴 Dernière vidéo YouTube : ${videoTitle}`)
+                .setTitle(`🔴 Nouvelle vidéo YouTube <@&1408165797288874004>  : ${videoTitle}`)
                 .setURL(videoUrl)
                 .setDescription(`Découvre notre tout dernier contenu fraîchement publié sur la chaîne !`)
                 .setImage(videoThumbnail);
