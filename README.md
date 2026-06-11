@@ -108,3 +108,11 @@ Les utilisateurs ne possédant pas ces droits se verront automatiquement masqué
 ## 🎓 Contexte Pédagogique
 
 Ce projet a été réalisé et restructuré dans le cadre d'un apprentissage des architectures événementielles et asynchrones en JavaScript (Node.js), en appliquant les bonnes pratiques de programmation enseignées en **BUT Informatique**.
+
+manque le réact d'émoji par un autre
+manque le /message
+Plus diviser les fonctionnalités du bots en dossier
+dossier (event / modération / live & youtube)
+youtube automatique ?
+centrée les données dans un json ?
+/rajouter insulte dans un dictionnaire json

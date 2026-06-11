@@ -5,19 +5,22 @@ module.exports = {
     name: 'react',
     async execute(interaction) {
         const role = interaction.options.getRole('role');
-        const emoji = interaction.getString('emoji');
+        const emoji = interaction.options.getString('emoji');
 
         const embedReactionRole = new EmbedBuilder()
             .setTitle("🎭 Attribution Automatique de Rôle")
             .setDescription(`Réagissez avec l'emoji ${emoji} pour obtenir ou retirer le rôle **${role.name}** !`)
             .setColor('#3498DB');
 
-        // Récupération de la réponse brute pour pouvoir y coller une réaction
-        const messageEnvoye = await interaction.reply({ embeds: [embedReactionRole], fetchReply: true });
-        await messageEnvoye.react(emoji);
+        // Correction ici : On envoie d'abord la réponse
+        await interaction.reply({ embeds: [embedReactionRole] });
+        
+        // On récupère le message que Discord vient de générer pour y placer l'émoji automatiquement
+        const messageOriginal = await interaction.fetchReply();
+        await messageOriginal.react(emoji).catch(() => console.log("Impossible de réagir avec cet émoji."));
 
         const filtreReactions = (reaction, user) => reaction.emoji.name === emoji && !user.bot;
-        const collecteurReactions = messageEnvoye.createReactionCollector({ filter: filtreReactions, dispose: true });
+        const collecteurReactions = messageOriginal.createReactionCollector({ filter: filtreReactions, dispose: true });
 
         collecteurReactions.on('collect', async (reaction, utilisateur) => {
             const membreGuilde = await interaction.guild.members.fetch(utilisateur.id);

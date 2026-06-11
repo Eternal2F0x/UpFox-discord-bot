@@ -1,0 +1,16 @@
+{
+  "config": {
+    "salons": {
+      "bienvenue": "1408157176316559420",
+      "annonces": "1407775485093478593",
+      "logs_moderation": "1407801890380709939"
+    },
+    "mots_interdits": ["merde", "connard", "salope", "fdp", "pute", "connasse"]
+  },
+  "historique_warns": {},
+  "liste_blanche": [],
+  "etats_externes": {
+    "statutDernierLiveTwitch": false,
+    "identifiantDerniereVideoYT": null
+  }
+}
