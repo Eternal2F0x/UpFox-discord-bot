@@ -1,8 +1,19 @@
-// #region 1. CONFIGURATION INITIALE & LOGICIELLE
-require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+// ============================================================================
+// 1. CONFIGURATION INITIALE & ENREGISTREMENT API REST
+// ============================================================================
+const { 
+    Client, 
+    GatewayIntentBits, 
+    EmbedBuilder, 
+    REST, 
+    Routes, 
+    SlashCommandBuilder, 
+    PermissionFlagsBits,
+    ActivityType
+} = require('discord.js');
 const axios = require('axios');
 const http = require('http');
+require('dotenv').config();
 
 const client = new Client({
     intents: [
@@ -11,718 +22,455 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessageReactions
-    ],
-    partials: [
-        Partials.GuildMember,
-        Partials.User,
-        Partials.Message,
-        Partials.Reaction
     ]
 });
 
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
-
-// Définition des commandes à enregistrer auprès de Discord
+// Enregistrement des Slash Commands auprès de l'API de Discord Gateway
 const slashCommandsJSON = [
-    // Commande /uphelp
-    new SlashCommandBuilder()
-        .setName('uphelp') // 🎯 Identifiant unique et cohérent
-        .setDescription('Affiche la liste de toutes les commandes disponibles sur le bot UpFox.'),
-
-    // Commande /hello
     new SlashCommandBuilder()
         .setName('hello')
-        .setDescription('Dit bonjour au bot UpFox !'),
-
-    // Commande /roll
+        .setDescription('Salue le bot de manière interactive.'),
+        
     new SlashCommandBuilder()
         .setName('roll')
-        .setDescription('Lance un dé à 6 faces.'),
-
-    // Commande /clear
+        .setDescription('Simule le lancer d\'un dé à 6 faces.'),
+        
+    new SlashCommandBuilder()
+        .setName('uphelp')
+        .setDescription('Affiche le centre d\'aide dynamique (Visible uniquement par vous).'),
+        
     new SlashCommandBuilder()
         .setName('clear')
-        .setDescription('Supprime un nombre de messages spécifié dans le salon (Admin).')
+        .setDescription('Supprime un nombre défini de messages (Admin uniquement).')
         .addIntegerOption(option => 
             option.setName('nombre')
-                .setDescription('Le nombre de messages à effacer (1-99)')
+                .setDescription('Le nombre de messages à supprimer (1-99)')
                 .setRequired(true))
+        // SÉCURITÉ NATIVE DISCORD : Cache la commande aux membres n'ayant pas la permission ADMINISTRATEUR
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(command => command.toJSON());
 
-// Fonction asynchrone pour envoyer les commandes à l'API de Discord (Correction de l'événement en 'ready')
-client.once('ready', async () => {
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+(async () => {
     try {
-        console.log('🔄 Enregistrement des Slash Commands auprès de Discord...');
+        console.log("🔄 Enregistrement des Slash Commands auprès de Discord...");
         await rest.put(
-            Routes.applicationCommands(client.user.id),
-            { body: slashCommandsJSON },
+            Routes.applicationCommands(process.env.DISCORD_CLIENT_ID || "123456789012345678"), // Remplir ou laisser l'API globale gérer
+            { body: slashCommandsJSON }
         );
-        console.log('✅ Slash Commands enregistrées avec succès !');
+        console.log("✅ Slash Commands enregistrées avec succès !");
     } catch (error) {
-        console.error('❌ Erreur lors de l\'enregistrement des Slash Commands :', error);
+        console.error("❌ Erreur lors de l'enregistrement des Slash Commands :", error);
     }
-});
+})();
 
-const PREFIX = '/';
-// #endregion
-
-// #region 2. PARAMÈTRES DE CONFIGURATION DES SALONS & CONSTANTES
+// ============================================================================
+// 2. PARAMÈTRES ET CONSTANTES DES SALONS
+// ============================================================================
 const ID_SALON_BIENVENUE = "1408157176316559420";
 const ID_SALON_ANNONCES = "1407775485093478593"; 
 const ID_SALON_LOGS_MODERATION = "1407801890380709939";
 
-const MOTS_INTERDITS = ["nigger", "fils de pute", "connard", "merde"]; 
-// #endregion
+// ============================================================================
+// 3. STRUCTURES DE DONNÉES EN MÉMOIRE VIVE (STATE)
+// ============================================================================
+const trackingSpamMembres = new Map();
+const membresAvertisCount = new Map();
+const listeBlancheAutoMod = new Set();
+let estCanalVerrouilleGlobal = false;
+let statutDernierLiveTwitch = false;
+let identifiantDerniereVideoYT = null;
 
-// #region 3. STRUCTURES DE DONNÉES EN MÉMOIRE (STATE)
-let twitchIsLive = false; 
-const warnDatabase = new Map();
-const ROLES_IMMUNISES = new Set(); 
-const MEMBRES_IMMUNISES = new Set(); 
-
-const antiSpamMap = new Map();
-const LIMITE_SPAM_MESSAGES = 4; 
-const LIMITE_SPAM_TEMPS = 4000;  
-// #endregion
-
-// #region 4. SERVEUR HTTP FANTÔME (KEEP-ALIVE RENDER)
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot UpFox en ligne ! ⚔️');
-}).listen(process.env.PORT || 3000, () => {
-    console.log(`🌐 Serveur fantôme Render activé sur le port ${process.env.PORT || 3000}`);
+// ============================================================================
+// 4. SERVEUR HTTP KEEP-ALIVE (POUR HÉBERGEMENT H24)
+// ============================================================================
+const portEcoute = process.env.PORT || 3000;
+http.createServer((requete, reponse) => {
+    reponse.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    reponse.end('🤖 UpFox Bot est opérationnel et en ligne !');
+}).listen(portEcoute, () => {
+    console.log(`🌐 Serveur fantôme Render activé sur le port ${portEcoute}`);
 });
-// #endregion
 
-// #region 5. FONCTIONS DE SERVICES APIS (TWITCH / GOOGLE)
-async function getTwitchAccessToken() {
+// ============================================================================
+// 5. COUCHE SERVICES D'INTÉGRATION APIS EXTERNES
+// ============================================================================
+async function recupererJetonAuthentificationTwitch() {
     try {
-        const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
+        const reponseToken = await axios.post('https://id.twitch.tv/oauth2/token', null, {
             params: {
                 client_id: process.env.TWITCH_CLIENT_ID,
                 client_secret: process.env.TWITCH_CLIENT_SECRET,
                 grant_type: 'client_credentials'
             }
         });
-        return response.data.access_token;
-    } catch (error) {
-        console.error("Erreur lors de la récupération du token Twitch :", error.message);
+        return reponseToken.data.access_token;
+    } catch (err) {
+        console.error("❌ Échec de génération du Token Twitch OAuth2 :", err.message);
         return null;
     }
 }
-// #endregion
 
-// #region 6. ÉVÉNEMENT : INITIALISATION & AUTOMATE TWITCH
-client.once('ready', () => {
-    console.log(`🤖 Bot connecté avec succès en tant que ${client.user.tag}!`);
-    console.log("⏱️ [Automate] Boucle de vérification Twitch initialisée.");
-    
-    setInterval(async () => {
-        console.log("🔄 [Automate] Vérification du statut Twitch en cours...");
-        try {
-            const channelName = process.env.TWITCH_CHANNEL_NAME;
-            const token = await getTwitchAccessToken();
-            
-            if (!token) {
-                console.log("❌ [Automate] Échec de la vérification : Impossible d'obtenir le token.");
-                return;
-            }
+async function verifierFluxDirectTwitch() {
+    const jetonTwitch = await recupererJetonAuthentificationTwitch();
+    if (!jetonTwitch) return;
 
-            const response = await axios.get(`https://api.twitch.tv/helix/streams`, {
-                headers: {
-                    'Client-ID': process.env.TWITCH_CLIENT_ID,
-                    'Authorization': `Bearer ${token}`
-                },
-                params: { user_login: channelName }
-            });
+    try {
+        const reponseFlux = await axios.get('https://api.twitch.tv/helix/streams', {
+            headers: {
+                'Client-ID': process.env.TWITCH_CLIENT_ID,
+                'Authorization': `Bearer ${jetonTwitch}`
+            },
+            params: { user_login: process.env.TWITCH_CHANNEL_NAME }
+        });
 
-            const streamData = response.data.data;
+        const donneesFlux = reponseFlux.data.data;
+        const salonAnnonces = await client.channels.fetch(ID_SALON_ANNONCES).catch(() => null);
 
-            let salonAnnonces = client.channels.cache.get(ID_SALON_ANNONCES);
-            if (!salonAnnonces) {
-                salonAnnonces = await client.channels.fetch(ID_SALON_ANNONCES);
-            }
-
-            if (streamData && streamData.length > 0) {
-                console.log(`📡 [Automate] Twitch détecte que ${channelName} est en LIVE !`);
+        if (donneesFlux.length > 0) {
+            if (!statutDernierLiveTwitch) {
+                statutDernierLiveTwitch = true;
+                const infoLive = donneesFlux[0];
                 
-                if (!twitchIsLive) { 
-                    twitchIsLive = true; 
-                    
-                    const live = streamData[0];
-                    const thumbnailUrl = live.thumbnail_url.replace('{width}', '1280').replace('{height}', '720');
-
-                    const embed = new EmbedBuilder()
-                        .setColor('#6441a5')
-                        .setTitle(`🎮 ALERTE LIVE : ${channelName} est en stream !`)
-                        .setURL(`https://twitch.tv/${channelName}`)
-                        .setDescription(`**Titre :** ${live.title}\n**Jeu :** ${live.game_name}`)
-                        .setImage(thumbnailUrl)
+                if (salonAnnonces) {
+                    const embedTwitch = new EmbedBuilder()
+                        .setTitle(`🦊 ${infoLive.user_name} est en LIVE sur Twitch !`)
+                        .setDescription(`**Jeu :** ${infoLive.game_name}\n**Titre :** ${infoLive.title}`)
+                        .setURL(`https://twitch.tv/${process.env.TWITCH_CHANNEL_NAME}`)
+                        .setColor('#9146FF')
+                        .setImage(infoLive.thumbnail_url.replace('{width}', '1280').replace('{height}', '720'))
                         .setTimestamp();
 
-                    await salonAnnonces.send({ content: "<@&1408165714757550130> Le clan est en live ! ⚔️", embeds: [embed] });
-                    console.log("✅ [Automate] Message d'alerte envoyé sur Discord !");
-                } else {
-                    console.log("ℹ️ [Automate] Le live est toujours en cours, alerte déjà envoyée.");
+                    await salonAnnonces.send({ content: `📢 @everyone **${infoLive.user_name}** vient de lancer un stream !`, embeds: [embedTwitch] });
                 }
-            } else {
-                console.log(`💤 [Automate] ${channelName} est hors ligne.`);
-                twitchIsLive = false; 
             }
-
-        } catch (error) {
-            console.error("❌ [Automate] Erreur lors de la vérification automatique :", error.message);
+        } else {
+            statutDernierLiveTwitch = false;
         }
-    }, 300000); // 5 minutes
-});
-// #endregion
-
-// #region 7. ÉVÉNEMENTS : GESTION DES FLUX DE MEMBRES (ACCUEIL)
-client.on('guildMemberAdd', async (member) => {
-    try {
-        const salon = member.guild.channels.cache.get(ID_SALON_BIENVENUE);
-        if (!salon) return;
-        await salon.send(`Bienvenue dans le clan ${member} ! 🎉 Prend une chope 🍺 et profite.`);
     } catch (error) {
-        console.error("Erreur lors de l'envoi du message de bienvenue :", error);
+        console.error("❌ Erreur lors du scan API Twitch Helix :", error.message);
+    }
+}
+
+async function verifierNouvelleVideoYouTube() {
+    try {
+        const reponseYT = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+            params: {
+                key: process.env.YOUTUBE_API_KEY,
+                channelId: process.env.YOUTUBE_CHANNEL_ID,
+                part: 'snippet,id',
+                order: 'date',
+                maxResults: 1
+            }
+        });
+
+        const elements = reponseYT.data.items;
+        if (!elements || elements.length === 0) return;
+
+        const derniereVideo = elements[0];
+        if (derniereVideo.id.kind !== 'youtube#video') return;
+
+        const idVideoActuelle = derniereVideo.id.videoId;
+        const salonAnnonces = await client.channels.fetch(ID_SALON_ANNONCES).catch(() => null);
+
+        if (!identifiantDerniereVideoYT) {
+            identifiantDerniereVideoYT = idVideoActuelle;
+            return;
+        }
+
+        if (idVideoActuelle !== identifiantDerniereVideoYT) {
+            identifiantDerniereVideoYT = idVideoActuelle;
+
+            if (salonAnnonces) {
+                const embedYouTube = new EmbedBuilder()
+                    .setTitle(`🎥 Nouvelle vidéo de ${derniereVideo.snippet.channelTitle} !`)
+                    .setDescription(derniereVideo.snippet.title)
+                    .setURL(`https://www.youtube.com/watch?v=${idVideoActuelle}`)
+                    .setColor('#FF0000')
+                    .setImage(derniereVideo.snippet.thumbnails.high.url)
+                    .setTimestamp();
+
+                await salonAnnonces.send({ content: `🔔 Nouvelle vidéo disponible !`, embeds: [embedYouTube] });
+            }
+        }
+    } catch (error) {
+        console.error("❌ Erreur lors du traitement API YouTube Data v3 :", error.message);
+    }
+}
+
+// ============================================================================
+// 6. ÉVÉNEMENTS DE CYCLE DE VIE (READY)
+// ============================================================================
+client.once('ready', () => {
+    console.log(`🤖 Bot connecté avec succès en tant que ${client.user.tag}!`);
+    
+    client.user.setActivity({
+        name: "protéger le clan Fox",
+        type: ActivityType.Custom
+    });
+
+    console.log("⏱️ [Automate] Boucle de vérification Twitch & YouTube initialisée (Intervalle : 5min).");
+    setInterval(verifierFluxDirectTwitch, 300000);
+    setInterval(verifierNouvelleVideoYouTube, 300000);
+});
+
+// ============================================================================
+// 7. ÉVÉNEMENTS DE FLUX DE MEMBRES
+// ============================================================================
+client.on('guildMemberAdd', async (membre) => {
+    const salonBienvenue = await client.channels.fetch(ID_SALON_BIENVENUE).catch(() => null);
+    if (salonBienvenue) {
+        await salonBienvenue.send(`🦊 Bienvenue au sein du clan, ${membre} ! Amuse-toi bien parmi nous.`);
     }
 });
 
-client.on('guildMemberRemove', async (member) => {
-    try {
-        const salon = member.guild.channels.cache.get(ID_SALON_BIENVENUE);
-        if (!salon) return;
-        const nomUtilisateur = member.user ? member.user.username : "Un membre";
-        await salon.send(`Oh, ${nomUtilisateur} a quitté le clan. 😢 Il n'était pas assez digne ⚔️`);
-    } catch (error) {
-        console.error("Erreur lors de l'envoi du message de départ :", error.message);
+client.on('guildMemberRemove', async (membre) => {
+    const salonBienvenue = await client.channels.fetch(ID_SALON_BIENVENUE).catch(() => null);
+    if (salonBienvenue) {
+        await salonBienvenue.send(`🍂 **${membre.user.tag}** a quitté le terrier. Bonne continuation à lui.`);
     }
 });
-// #endregion
 
-// #region 8. ÉVÉNEMENT CENTRAL : TRAITEMENT DES MESSAGES
+// ============================================================================
+// 8. ÉVÉNEMENT CENTRAL DES MESSAGES TEXTUELS (PREFIXE `!`)
+// ============================================================================
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
-    const hasManageMessages = message.member.permissions.has(PermissionFlagsBits.ManageMessages);
+    const estModérateur = message.member.permissions.has(PermissionFlagsBits.ManageMessages);
+    const estImmunise = listeBlancheAutoMod.has(message.author.id) || message.member.roles.cache.some(r => listeBlancheAutoMod.has(r.id));
 
-    // ==========================================================
-    // 🛡️ SUB-SECTION : MOTEUR D'AUTO-MODÉRATION PASSIVE
-    // ==========================================================
-    const aRoleImmunise = message.member.roles.cache.some(role => ROLES_IMMUNISES.has(role.id));
-    const estMembreImmunise = MEMBRES_IMMUNISES.has(message.author.id);
-
-    if (!hasManageMessages && !aRoleImmunise && !estMembreImmunise) {
-        let raisonSanction = null;
-        const texteBrut = message.content.trim();
-
-        const messageNormalise = texteBrut.toLowerCase();
-        const contientInsulte = MOTS_INTERDITS.some(mot => messageNormalise.includes(mot));
-        if (contientInsulte) {
-            raisonSanction = "Langage vulgaire / Mots interdits";
+    // 🛡️ SYSTÈME AUTOMOD PASSIF
+    if (!estModérateur && !estImmunise) {
+        // A. Traitement du Spam (Filtre temporel)
+        const instantT = Date.now();
+        if (!trackingSpamMembres.has(message.author.id)) {
+            trackingSpamMembres.set(message.author.id, []);
         }
+        const historiquesMessages = trackingSpamMembres.get(message.author.id);
+        historiquesMessages.push(instantT);
 
-        if (!raisonSanction && texteBrut.length > 10) {
-            const countMajuscules = texteBrut.replace(/[^A-Z]/g, "").length;
-            const countLettresTotales = texteBrut.replace(/[^a-zA-Z]/g, "").length;
+        // Analyse sur les 4 dernières secondes
+        const fenetreFiltre = historiquesMessages.filter(timestamp => instantT - timestamp < 4000);
+        trackingSpamMembres.set(message.author.id, fenetreFiltre);
 
-            if (countLettresTotales > 0 && (countMajuscules / countLettresTotales) > 0.70) {
-                raisonSanction = "Abus de lettres capitales (CAPSLOCK)";
-            }
-        }
-
-        if (!raisonSanction) {
-            const maintenant = Date.now();
-            if (!antiSpamMap.has(message.author.id)) {
-                antiSpamMap.set(message.author.id, []);
-            }
-
-            const historiqueTimestamps = antiSpamMap.get(message.author.id);
-            historiqueTimestamps.push(maintenant);
-
-            const messagesRecents = historiqueTimestamps.filter(t => maintenant - t < LIMITE_SPAM_TEMPS);
-            antiSpamMap.set(message.author.id, messagesRecents);
-
-            if (messagesRecents.length > LIMITE_SPAM_MESSAGES) {
-                raisonSanction = "Spam rapide / Flux de messages excessif";
-            }
-        }
-
-        if (raisonSanction) {
+        if (fenetreFiltre.length > 4) {
             await message.delete().catch(() => {});
+            const avertissementSpam = await message.channel.send(`⚠️ ${message.author}, merci de ralentir la cadence (Anti-Spam).`);
+            setTimeout(() => avertissementSpam.delete().catch(() => {}), 4000);
+            return;
+        }
 
-            const alertePublique = await message.channel.send(`⚠️ ${message.author}, votre message a été supprimé. Motif : **${raisonSanction}**.`);
-            setTimeout(() => alertePublique.delete().catch(() => {}), 6000);
+        // B. Traitement des insultes et Grossièretés
+        const listeMotsProscrits = ['merde', 'connard', 'salope', 'fdp', 'pute']; 
+        const messageNormalise = message.content.toLowerCase();
+        if (listeMotsProscrits.some(mot => messageNormalise.includes(mot))) {
+            await message.delete().catch(() => {});
+            
+            const logsSalon = await client.channels.fetch(ID_SALON_LOGS_MODERATION).catch(() => null);
+            if (logsSalon) {
+                const embedLogInsulte = new EmbedBuilder()
+                    .setTitle("🛡️ Auto-Mod : Propos Inappropriés Bloqués")
+                    .setColor('#FF9900')
+                    .addFields(
+                        { name: "Auteur", value: `${message.author} (${message.author.id})`, inline: true },
+                        { name: "Salon", value: `${message.channel}`, inline: true },
+                        { name: "Message d'origine", value: message.content }
+                    )
+                    .setTimestamp();
+                await logsSalon.send({ embeds: [embedLogInsulte] });
+            }
 
-            try {
-                let salonLogs = message.guild.channels.cache.get(ID_SALON_LOGS_MODERATION);
-                if (!salonLogs) salonLogs = await message.guild.channels.fetch(ID_SALON_LOGS_MODERATION);
+            const alerteInsulte = await message.channel.send(`❌ ${message.author}, les propos vulgaires sont interdits ici.`);
+            setTimeout(() => alerteInsulte.delete().catch(() => {}), 5000);
+            return;
+        }
 
-                if (salonLogs) {
-                    const embedLog = new EmbedBuilder()
-                        .setColor('#ff3333')
-                        .setTitle('🛡️ Système Auto-Mod : Message intercepté')
-                        .setTimestamp()
-                        .addFields(
-                            { name: '👤 Utilisateur', value: `${message.author} (${message.author.tag})`, inline: true },
-                            { name: '📍 Salon', value: `${message.channel}`, inline: true },
-                            { name: '🚨 Motif de suppression', value: `\`${raisonSanction}\`` },
-                            { name: '📝 Contenu effacé', value: texteBrut.length > 1024 ? `${texteBrut.substring(0, 1020)}...` : `*${texteBrut}*` }
-                        );
-                    await salonLogs.send({ embeds: [embedLog] });
+        // C. Traitement de l'abus de MAJUSCULES (CAPSLOCK)
+        if (message.content.length > 8) {
+            const lettresUniquement = message.content.replace(/[^a-zA-Z]/g, '');
+            if (lettresUniquement.length > 0) {
+                const lettresMajuscules = lettresUniquement.replace(/[^A-Z]/g, '');
+                const ratioMajuscules = lettresMajuscules.length / lettresUniquement.length;
+
+                if (ratioMajuscules > 0.70) {
+                    await message.delete().catch(() => {});
+                    const alerteCaps = await message.channel.send(`⚠️ ${message.author}, évite de crier en majuscules !`);
+                    setTimeout(() => alerteCaps.delete().catch(() => {}), 4000);
+                    return;
                 }
-            } catch (err) {
-                console.error("Échec d'envoi du log d'auto-modération :", err.message);
             }
-            return; 
         }
     }
 
-    // ==========================================================
-    // 🎭 MODULES COMPORTEMENTAUX
-    // ==========================================================
-    const emojiPanneau = "<:Happy_sign:1514169900179128380>";
-    if (message.content.includes(emojiPanneau)) {
-        try {
-            await message.react(emojiPanneau);
-        } catch (error) {
-            console.error("Impossible de réagir avec l'émoji :", error);
-        }
+    // ⚔️ BLOC DES COMMANDES ADMINISTRATIVES AVEC PRÉFIXE `!`
+    if (!message.content.startsWith('!')) return;
+
+    const argumentsCommande = message.content.slice(1).trim().split(/ +/);
+    const nomCommande = argumentsCommande.shift().toLowerCase();
+
+    // Commande MUTEALL / UNMUTEALL
+    if (nomCommande === 'muteall' || nomCommande === 'unmuteall') {
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return;
+        const statutVerrou = (nomCommande === 'muteall');
+        estCanalVerrouilleGlobal = statutVerrou;
+
+        await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
+            SendMessages: !statutVerrou
+        });
+        await message.reply(statutVerrou ? "🔒 Le salon a été verrouillé (MuteAll activé)." : "🔓 Le salon a été déverrouillé (MuteAll désactivé).");
+        return;
     }
 
-    if (!message.content.startsWith(PREFIX)) return;
+    // Commande WARN / UNWARN
+    if (nomCommande === 'warn') {
+        if (!estModérateur) return;
+        const cible = message.mentions.members.first();
+        if (!cible) return message.reply("❌ Mentionnez le membre à avertir.");
 
-    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-    const command = args.shift().toLowerCase();
+        let infractions = (membresAvertisCount.get(cible.id) || 0) + 1;
+        membresAvertisCount.set(cible.id, infractions);
 
-    // ==========================================================
-    // 👤 COMMANDES PUBLIQUES TEXTUELLES
-    // ==========================================================
-    if (command === 'hello') {
-        return message.channel.send(`Salut ${message.author.username} alias ${message.author.displayName} !👋`);
-    }
-
-    if (command === 'roll') {
-        const resultatDe = Math.floor(Math.random() * 6) + 1;
-        return message.reply(`🎲 Tu as lancé un dé et tu as obtenu un **${resultatDe}** !`);
-    }
-
-    if (command === 'twitch') {
-        try {
-            const channelName = process.env.TWITCH_CHANNEL_NAME;
-            const twitchUrl = `https://twitch.tv/${channelName}`;
-            const token = await getTwitchAccessToken();
-            if (!token) return message.reply("❌ Impossible de se connecter à l'API Twitch actuellement.");
-
-            const response = await axios.get(`https://api.twitch.tv/helix/streams`, {
-                headers: {
-                    'Client-ID': process.env.TWITCH_CLIENT_ID,
-                    'Authorization': `Bearer ${token}`
-                },
-                params: { user_login: channelName }
-            });
-
-            const streamData = response.data.data;
-            const embed = new EmbedBuilder().setColor('#6441a5');
-
-            if (streamData && streamData.length > 0) {
-                const live = streamData[0];
-                const thumbnailUrl = live.thumbnail_url.replace('{width}', '1280').replace('{height}', '720');
-
-                embed.setTitle(`🟣 Je suis en LIVE sur Twitch !`)
-                     .setDescription(`**Titre :** ${live.title}\n**Jeu :** ${live.game_name}\n**Spectateurs :** ${live.viewer_count} 👥`)
-                     .setURL(twitchUrl)
-                     .setImage(thumbnailUrl);
-            } else {
-                embed.setTitle(`⚫ Chaîne Twitch de ${channelName}`)
-                     .setDescription(`Je ne suis pas en live pour le moment. Rejoins la communauté pour ne pas rater le prochain stream !`)
-                     .setURL(twitchUrl);
-            }
-            return message.reply({ embeds: [embed] });
-        } catch (error) {
-            console.error("Erreur lors de la commande !twitch :", error.message);
-            return message.reply("⚠️ Une erreur est survenue lors de la récupération des informations Twitch.");
-        }
-    }
-
-    if (command === 'youtube') {
-        try {
-            const apiKey = process.env.YOUTUBE_API_KEY;
-            const channelId = process.env.YOUTUBE_CHANNEL_ID;
-
-            const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
-                params: {
-                    key: apiKey,
-                    channelId: channelId,
-                    part: 'snippet',
-                    order: 'date',
-                    maxResults: 1,
-                    type: 'video'
-                }
-            });
-
-            const videos = response.data.items;
-            if (!videos || videos.length === 0) {
-                return message.reply("📺 Aucune vidéo publique n'a été trouvée sur cette chaîne YouTube.");
-            }
-
-            const latestVideo = videos[0];
-            const videoUrl = `https://www.youtube.com/watch?v=${latestVideo.id.videoId}`;
-
-            const embed = new EmbedBuilder()
-                .setColor('#FF0000')
-                .setTitle(`🔴 Nouvelle vidéo YouTube : ${latestVideo.snippet.title}`)
-                .setURL(videoUrl)
-                .setDescription(`Découvre notre tout dernier contenu fraîchement publié sur la chaîne !`)
-                .setImage(latestVideo.snippet.thumbnails.high.url);
-
-            return message.reply({ embeds: [embed] });
-        } catch (error) {
-            console.error("Erreur lors de la commande !youtube :", error.message);
-            return message.reply("⚠️ Une erreur est survenue lors de la récupération de la vidéo YouTube.");
-        }
-    }
-
-    // ==========================================================
-    // ⚔️ COMMANDES DE MODÉRATION (STAFF)
-    // ==========================================================
-    if (!hasManageMessages) return;
-
-    if (command === 'whitelist') {
-        const type = args[0]; 
-        const targetId = args[1];
-
-        if (!type || !targetId) {
-            return message.reply("❌ Erreur de syntaxe. Exemples :\n`!whitelist role <ID_ROLE>`\n`!whitelist user <ID_USER>`");
-        }
-
-        if (type === 'role') {
-            ROLES_IMMUNISES.add(targetId);
-            message.channel.send(`🛡️ Le rôle \`${targetId}\` est désormais **immunisé** contre les contrôles de l'Auto-Mod.`);
-        } else if (type === 'user') {
-            MEMBRES_IMMUNISES.add(targetId);
-            message.channel.send(`🛡️ L'utilisateur \`${targetId}\` est désormais **immunisé** contre les contrôles de l'Auto-Mod.`);
+        if (infractions >= 3) {
+            await cible.kick("Cumul de 3 avertissements (Automatique)").catch(() => {});
+            membresAvertisCount.set(cible.id, 0);
+            await message.channel.send(`🚨 **${cible.user.tag}** a été expulsé du serveur après avoir reçu son 3ème avertissement.`);
         } else {
-            return message.reply("❌ Type non reconnu. Utilisez `role` ou `user`.");
+            await message.channel.send(`⚠️ **${cible.user.tag}** a reçu un avertissement (${infractions}/3).`);
         }
-        return message.delete().catch(() => {});
+        return;
     }
 
-    if (command === 'unwhitelist') {
-        const type = args[0];
-        const targetId = args[1];
-
-        if (!type || !targetId) {
-            return message.reply("❌ Erreur de syntaxe. Exemples :\n`!unwhitelist role <ID_ROLE>`\n`!unwhitelist user <ID_USER>`");
-        }
-
-        if (type === 'role') {
-            if (ROLES_IMMUNISES.delete(targetId)) {
-                message.channel.send(`⚠️ Le rôle \`${targetId}\` a perdu ses droits d'immunité.`);
-            } else {
-                message.reply("❌ Cet ID de rôle ne figure pas dans la liste des immunités.");
-            }
-        } else if (type === 'user') {
-            if (MEMBRES_IMMUNISES.delete(targetId)) {
-                message.channel.send(`⚠️ L'utilisateur \`${targetId}\` a perdu ses droits d'immunité.`);
-            } else {
-                message.reply("❌ Cet ID utilisateur ne figure pas dans la liste des immunités.");
-            }
-        }
-        return message.delete().catch(() => {});
-    }
-
-    if (command === 'warn') {
+    if (nomCommande === 'unwarn') {
+        if (!estModérateur) return;
         const cible = message.mentions.members.first();
-        if (!cible) return message.reply("❌ Syntaxe : `!warn @Pseudo [Raison]`");
+        if (!cible) return message.reply("❌ Mentionnez le membre à gracier.");
+
+        membresAvertisCount.set(cible.id, 0);
+        await message.reply(`✅ Les avertissements de **${cible.user.tag}** ont été remis à zéro.`);
+        return;
+    }
+
+    // Commande MUTE / UNMUTE (Via timeout natif Discord)
+    if (nomCommande === 'mute') {
+        if (!estModérateur) return;
+        const cible = message.mentions.members.first();
+        if (!cible) return message.reply("❌ Mentionnez le membre à isoler.");
         
-        const raison = args.slice(1).join(' ') || "Aucune raison spécifiée";
+        // Par défaut exclusion de 10 minutes
+        await cible.timeout(10 * 60 * 1000, "Sanction par commande !mute").catch(() => {});
+        await message.reply(`🔇 **${cible.user.tag}** a été réduit au silence pour 10 minutes.`);
+        return;
+    }
+
+    if (nomCommande === 'unmute') {
+        if (!estModérateur) return;
+        const cible = message.mentions.members.first();
+        if (!cible) return message.reply("❌ Mentionnez le membre à rétablir.");
+
+        await cible.timeout(null).catch(() => {});
+        await message.reply(`🔊 **${cible.user.tag}** peut de nouveau s'exprimer.`);
+        return;
+    }
+
+    // Commande KICK / BAN
+    if (nomCommande === 'kick') {
+        if (!message.member.permissions.has(PermissionFlagsBits.KickMembers)) return;
+        const cible = message.mentions.members.first();
+        if (!cible) return message.reply("❌ Mentionnez le membre à expulser.");
+
+        await cible.kick("Expulsé par commande staff").catch(() => {});
+        await message.reply(`🥾 **${cible.user.tag}** a été expulsé.`);
+        return;
+    }
+
+    if (nomCommande === 'ban') {
+        if (!message.member.permissions.has(PermissionFlagsBits.BanMembers)) return;
+        const cible = message.mentions.members.first();
+        if (!cible) return message.reply("❌ Mentionnez le membre à bannir.");
+
+        await cible.ban({ reason: "Banni par commande staff" }).catch(() => {});
+        await message.reply(`🔨 **${cible.user.tag}** a été banni définitivement.`);
+        return;
+    }
+
+    // Commande WHITELIST / UNWHITELIST (Immunisation AutoMod)
+    if (nomCommande === 'whitelist') {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+        const cibleMentionnee = message.mentions.members.first() || message.mentions.roles.first();
+        if (!cibleMentionnee) return message.reply("❌ Mentionnez un membre ou un rôle à immuniser.");
+
+        listeBlancheAutoMod.add(cibleMentionnee.id);
+        await message.reply(`✅ **${cibleMentionnee.user?.tag || cibleMentionnee.name}** est désormais immunisé contre l'AutoMod.`);
+        return;
+    }
+
+    if (nomCommande === 'unwhitelist') {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+        const cibleMentionnee = message.mentions.members.first() || message.mentions.roles.first();
+        if (!cibleMentionnee) return message.reply("❌ Mentionnez un élément à retirer de l'immunité.");
+
+        listeBlancheAutoMod.delete(cibleMentionnee.id);
+        await message.reply(`🚫 **${cibleMentionnee.user?.tag || cibleMentionnee.name}** est de nouveau soumis à l'AutoMod.`);
+        return;
+    }
+
+    // Configuration Interactive du Reaction Role (!react)
+    if (nomCommande === 'react') {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
         
-        let countWarns = warnDatabase.get(cible.id) || 0;
-        countWarns++;
-        warnDatabase.set(cible.id, countWarns);
+        const identifiantRole = argumentsCommande[0];
+        const emojiReaction = argumentsCommande[1];
 
-        message.channel.send(`⚠️ **${cible.displayName}** a reçu un avertissement pour : *${reason}* (${countWarns}/3).`);
-        
-        if (countWarns >= 3) {
-            if (cible.kickable) {
-                await cible.kick("Accumulation de 3 avertissements.");
-                message.channel.send(`🚨 **${cible.displayName}** a été expulsé du serveur pour accumulation d'avertissements.`);
-                warnDatabase.set(cible.id, 0);
-            }
-        }
-        return message.delete().catch(() => {});
-    }
-
-    if (command === 'unwarn') {
-        const cible = message.mentions.members.first();
-        if (!cible) return message.reply("❌ Syntaxe : `!unwarn @Pseudo`");
-
-        let countWarns = warnDatabase.get(cible.id) || 0;
-        if (countWarns > 0) countWarns--;
-        warnDatabase.set(cible.id, countWarns);
-
-        return message.reply(`✅ Avertissement révoqué pour **${cible.displayName}** (Total actuel : ${countWarns}).`);
-    }
-
-    if (command === 'mute') {
-        const cible = message.mentions.members.first();
-        const minutes = parseInt(args[1]);
-        const raison = args.slice(2).join(' ') || "Pas de raison spécifiée";
-
-        if (!cible || isNaN(minutes)) {
-            return message.reply("❌ Syntaxe : `!mute @Pseudo <minutes> [raison]`");
+        if (!identifiantRole || !emojiReaction) {
+            return message.reply("❌ Syntaxe incorrecte. Exemple : `!react ID_DU_ROLE 👍`");
         }
 
-        try {
-            await cible.timeout(minutes * 60 * 1000, raison);
-            message.channel.send(`🔇 **${cible.displayName}** a été exclu temporairement pendant **${minutes}** minutes. Motif : *${raison}*`);
-            return message.delete().catch(() => {});
-        } catch (error) {
-            return message.reply("❌ Action impossible : Hiérarchie de rôles insuffisante.");
-        }
-    }
+        const embedReactionRole = new EmbedBuilder()
+            .setTitle("🎭 Attribution Automatique de Rôle")
+            .setDescription(`Réagissez avec l'emoji ${emojiReaction} pour obtenir ou retirer le rôle associé !`)
+            .setColor('#3498DB');
 
-    if (command === 'unmute') {
-        const cible = message.mentions.members.first();
-        if (!cible) return message.reply("❌ Syntaxe : `!unmute @Pseudo`");
+        const messageEnvoye = await message.channel.send({ embeds: [embedReactionRole] });
+        await messageEnvoye.react(emojiReaction);
 
-        try {
-            await cible.timeout(null);
-            return message.channel.send(`🔊 **${cible.displayName}** a récupéré l'autorisation de parler.`);
-        } catch (error) {
-            return message.reply("❌ Impossible de supprimer l'exclusion temporelle de ce membre.");
-        }
-    }
+        // Collecteur persistant passif (Gestion via les événements globaux recommandée en production, mais valide ici)
+        const filtreReactions = (reaction, user) => reaction.emoji.name === emojiReaction && !user.bot;
+        const collecteurReactions = messageEnvoye.createReactionCollector({ filter: filtreReactions, dispose: true });
 
-    if (command === 'kick') {
-        const cible = message.mentions.members.first();
-        if (!cible) return message.reply("❌ Syntaxe : `!kick @Pseudo [raison]`");
-        if (!cible.kickable) return message.reply("❌ Droits insuffisants vis-à-vis de la hiérarchie de ce membre.");
-
-        const raison = args.slice(1).join(' ') || "Aucune raison spécifiée";
-        await cible.kick(raison);
-        return message.channel.send(`🚨 **${cible.displayName}** a été expulsé. Motif : *${raison}*`);
-    }
-
-    if (command === 'ban') {
-        const cible = message.mentions.members.first();
-        if (!cible) return message.reply("❌ Syntaxe : `!ban @Pseudo [raison]`");
-        if (!cible.bannable) return message.reply("❌ Droits insuffisants vis-à-vis de la hiérarchie de ce membre.");
-
-        const raison = args.slice(1).join(' ') || "Aucune raison spécifiée";
-        await cible.ban({ reason: raison });
-        return message.channel.send(`🔨 **${cible.displayName}** a été banni définitivement. Motif : *${raison}*`);
-    }
-
-    if (command === 'message') {
-        const salonCible = message.mentions.channels.first();
-        args.shift();
-        const texteAEnvoyer = args.join(' ');
-
-        if (!salonCible || !texteAEnvoyer) {
-            return message.reply("❌ Syntaxe incorrecte. Exemple : `!message #salon Votre texte`.");
-        }
-
-        try {
-            await message.reply(`${message.member.displayName} : ${texteAEnvoyer} sur ${salonCible}`);
-            await salonCible.send(texteAEnvoyer);
-            await message.delete();
-        } catch (error) {
-            console.error("Erreur lors de l'envoi du message forcé :", error);
-        }
-    }
-
-    if (command === 'react') {
-        const salonCible = message.mentions.channels.first();
-        args.shift();
-
-        const idMessage = args[0];
-        const emojiBrut = args[1];
-        const roleCible = message.mentions.roles.first();
-
-        if (!salonCible || !idMessage || !emojiBrut || !roleCible) {
-            return message.reply("❌ Syntaxe incorrecte. Exemple : `!react #salon ID_MESSAGE :emoji: @Role`");
-        }
-
-        try {
-            const messageCible = await salonCible.messages.fetch(idMessage);
-            await messageCible.react(emojiBrut);
-
-            const filtre = (reaction, user) => reaction.emoji.name === emojiBrut || reaction.emoji.toString() === emojiBrut;
-            const collector = messageCible.createReactionCollector({ filtre, dispose: true });
-
-            collector.on('collect', async (reaction, user) => {
-                if (user.bot) return;
-                try {
-                    const membre = await message.guild.members.fetch(user.id);
-                    await membre.roles.add(roleCible);
-                } catch (err) {
-                    console.error("Erreur lors de l'ajout du rôle :", err);
-                }
-            });
-
-            collector.on('remove', async (reaction, user) => {
-                if (user.bot) return;
-                try {
-                    const membre = await message.guild.members.fetch(user.id);
-                    await membre.roles.remove(roleCible);
-                } catch (err) {
-                    console.error("Erreur lors du retrait du rôle :", err);
-                }
-            });
-
-            await message.reply(`✅ Système de Reaction Role configuré sur le message dans ${salonCible} !`);
-            await message.delete();
-
-        } catch (error) {
-            console.error("Erreur lors de la configuration du !react :", error);
-            message.reply("❌ Impossible de configurer le système. Vérifie l'ID du message.");
-        }
-    }
-
-    // ==========================================================
-    // 👑 COMMANDES ADMINISTRATEURS (TEXTUELLES)
-    // ==========================================================
-    const isServerAdmin = message.member.permissions.has(PermissionFlagsBits.Administrator);
-
-    if (command === 'muteall') {
-        if (!isServerAdmin) return message.reply("❌ Seuls les administrateurs peuvent utiliser cette commande.");
-        try {
-            await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
-            await message.channel.send("🔒 **Le salon a été verrouillé.** Écriture désactivée pour le rôle @everyone.");
-            await message.delete().catch(() => {});
-        } catch (error) {
-            console.error(error);
-            message.reply("❌ Impossible de modifier les permissions du salon.");
-        }
-    }
-
-    if (command === 'unmuteall') {
-        if (!isServerAdmin) return message.reply("❌ Seuls les administrateurs peuvent utiliser cette commande.");
-        try {
-            await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: null });
-            await message.channel.send("🔓 **Le salon a été déverrouillé.** Écriture réactivée pour le rôle @everyone.");
-            await message.delete().catch(() => {});
-        } catch (error) {
-            console.error(error);
-            message.reply("❌ Impossible de restaurer les permissions du salon.");
-        }
-    }
-
-    if (command === 'clear') {
-        if (!isServerAdmin) return message.reply("❌ Seuls les administrateurs peuvent utiliser cette commande.");
-
-        const nombreDeMessages = parseInt(args[0]);
-        if (isNaN(nombreDeMessages) || nombreDeMessages < 1 || nombreDeMessages > 99) {
-            return message.reply("❌ Indiquez un nombre entre 1 et 99. Exemple : `!clear 10`.");
-        }
-
-        const messageDemande = await message.reply(`⚠️ Confirmez la suppression de **${nombreDeMessages}** messages avec \`!ok\` ou \`!cancel\`.`);
-
-        const filtreConfirmation = response => response.author.id === message.author.id && ['!ok', '!cancel'].includes(response.content.toLowerCase());
-        const collector = message.channel.createMessageCollector({ filter: filtreConfirmation, time: 15000, max: 1 });
-
-        collector.on('collect', async (reponseMessage) => {
-            if (reponseMessage.content.toLowerCase() === '!ok') {
-                try {
-                    const messagesDuSalon = await message.channel.messages.fetch({ limit: nombreDeMessages + 2 });
-                    const limite14Jours = Date.now() - (14 * 24 * 60 * 60 * 1000);
-                    const messagesSupprimables = messagesDuSalon.filter(msg => msg.createdTimestamp > limite14Jours);
-                    const quantiteReelle = messagesSupprimables.size - 2;
-
-                    if (messagesSupprimables.size > 0) {
-                        await message.channel.bulkDelete(messagesSupprimables);
-                    }
-
-                    let texteConfirmation = `🗑️ **${quantiteReelle}** message(s) ont été nettoyés.`;
-                    if (quantiteReelle < nombreDeMessages) {
-                        texteConfirmation += ` *(Les messages de plus de 14 jours ont été ignorés).*`;
-                    }
-
-                    const confirmation = await message.channel.send(texteConfirmation);
-                    setTimeout(() => confirmation.delete().catch(() => {}), 5000);
-                } catch (error) {
-                    console.error(error);
-                    message.channel.send("❌ Erreur lors de l'exécution du nettoyage.");
-                }
-            } else {
-                await messageDemande.edit("❌ Suppression annulée.");
-                await reponseMessage.delete().catch(() => {});
-                setTimeout(() => messageDemande.delete().catch(() => {}), 3000);
-            }
+        collecteurReactions.on('collect', async (reaction, utilisateur) => {
+            const membreGuilde = await message.guild.members.fetch(utilisateur.id);
+            await membreGuilde.roles.add(identifiantRole).catch(() => {});
         });
 
-        collector.on('end', (collected, reason) => {
-            if (reason === 'time') {
-                messageDemande.edit("⏱️ Temps écoulé. Suppression automatique annulée.").catch(() => {});
-                setTimeout(() => messageDemande.delete().catch(() => {}), 3000);
-            }
+        collecteurReactions.on('remove', async (reaction, utilisateur) => {
+            const membreGuilde = await message.guild.members.fetch(utilisateur.id);
+            await membreGuilde.roles.remove(identifiantRole).catch(() => {});
         });
     }
 });
-// #endregion
 
-// #region 9. SÉCURITÉ GLOBO-SYSTÈME & CONNEXION
-process.on('unhandledRejection', error => {
-    console.error('\n[ERREUR CAPTURÉE] Trace système :');
-    console.error(error.message);
+// ============================================================================
+// 9. GESTION GLOBALE DES EXCEPTIONS SYSTÈME (ANTI-CRASH)
+// ============================================================================
+process.on('unhandledRejection', (raison, promesse) => {
+    console.error('💥 Erreur asynchrone non interceptée :', raison);
 });
 
-client.login(process.env.DISCORD_TOKEN);
-// #endregion
-
-// #region 10. ÉVÉNEMENT : INTERACTION CREATE (SLASH COMMANDS)
+// ============================================================================
+// 10. GESTIONNAIRE D'INTERACTIONS D'INTERFACE UTILISATEUR (SLASH COMMANDS)
+// ============================================================================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName, options, member } = interaction;
+    const { commandName, options, member, guild } = interaction;
 
     // ==========================================
-    // 📖 COMMANDE PROPRE : /UPHELP
-    // ==========================================
-    if (commandName === 'uphelp') { // 🎯 Correspondance exacte avec le registre
-        const hasModPerms = member.permissions.has(PermissionFlagsBits.ManageMessages);
-        const isServerAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
-
-        const embedHelp = new EmbedBuilder()
-            .setColor('#5865F2')
-            .setTitle('🦊 Centre d\'Aide du Bot UpFox')
-            .setDescription('Voici la liste des commandes disponibles, triées par catégorie et selon vos permissions.')
-            .setThumbnail(client.user.displayAvatarURL())
-            .setTimestamp();
-
-        // 1. Catégorie Publique
-        embedHelp.addFields({
-            name: '👥 Commandes Publiques',
-            value: '`/uphelp` - Affiche ce menu d\'aide interactif.\n`/hello` - Saluer le bot.\n`/roll` - Lancer un dé à 6 faces.\n`!twitch` - Statut du live Twitch.\n`!youtube` - Dernière vidéo mise en ligne.'
-        });
-
-        // 2. Catégorie Staff Modérateur
-        if (hasModPerms) {
-            embedHelp.addFields({
-                name: '⚔️ Commandes de Modération',
-                value: '`!warn @membre [raison]` - Assigner un avertissement.\n`!unwarn @membre` - Retirer un avertissement.\n`!mute @membre <min> [raison]` - Exclusion temporaire.\n`!unmute @membre` - Retirer le mute.\n`!kick @membre [raison]` - Expulser du serveur.\n`!ban @membre [raison]` - Bannir du serveur.\n`!whitelist <role/user> <ID>` - Ajouter une immunité.\n`!unwhitelist <role/user> <ID>` - Retirer une immunité.'
-            });
-        }
-
-        // 3. Catégorie Administration
-        if (isServerAdmin) {
-            embedHelp.addFields({
-                name: '👑 Commandes d\'Administration',
-                value: '`/clear <1-99>` - Nettoyer les messages du salon.\n`!muteall` - Verrouiller l\'écriture du salon.\n`!unmuteall` - Réactiver l\'écriture du salon.'
-            });
-        }
-
-        return await interaction.reply({ embeds: [embedHelp], ephemeral: true });
-    }
-
-    // ==========================================
-    // 👋 COMMANDE : /HELLO
+    // 💻 COMMANDE : /HELLO
     // ==========================================
     if (commandName === 'hello') {
-        return await interaction.reply(`Salut ${interaction.user.username} ! 👋`);
+        await interaction.reply(`🦊 Bonjour ${interaction.user} ! Comment se porte le clan aujourd'hui ?`);
     }
 
     // ==========================================
@@ -730,7 +478,104 @@ client.on('interactionCreate', async (interaction) => {
     // ==========================================
     if (commandName === 'roll') {
         const resultatDe = Math.floor(Math.random() * 6) + 1;
-        return await interaction.reply(`🎲 Tu as lancé un dé et tu as obtenu un **${resultatDe}** !`);
+        await interaction.reply(`🎲 **${interaction.user.username}** lance un dé à 6 faces et obtient un **${resultatDe}** !`);
+    }
+
+    // ==========================================
+    // 📑 COMMANDE : /UPHELP (SÉCURISÉE)
+    // ==========================================
+    if (commandName === 'uphelp') {
+        // Validation anti-crash : Vérifie si la commande s'exécute bien sur un serveur
+        const estModérateur = guild && member ? member.permissions.has(PermissionFlagsBits.ManageMessages) : false;
+        const estAdministrateur = guild && member ? member.permissions.has(PermissionFlagsBits.Administrator) : false;
+
+        const embedHelp = new EmbedBuilder()
+            .setTitle("🦊 Centre d'Aide UpFox")
+            .setDescription("Liste des commandes disponibles adaptées à votre profil.")
+            .setColor('#2ECC71')
+            .addFields(
+                { name: "👤 Commandes Publiques", value: "`/hello` - Saluer le bot\n`/roll` - Lancer un dé à 6 faces\n`/uphelp` - Afficher ce menu d'aide" }
+            );
+
+        if (estModérateur || estAdministrateur) {
+            embedHelp.addFields({ 
+                name: "⚔️ Modération Staff (`!`)", 
+                value: "`!warn @membre` - Donner un avertissement (Kick à 3)\n`!unwarn @membre` - Reset les infractions\n`!mute @membre` - Rendre muet 10min\n`!unmute @membre` - Annuler le mute\n`!kick @membre` - Expulser\n`!ban @membre` - Bannir\n`!muteall` - Verrouiller le salon textuel" 
+            });
+        }
+
+        if (estAdministrateur) {
+            embedHelp.addFields({ 
+                name: "⚙️ Administration Pro", 
+                value: "`/clear [nombre]` - Nettoyage de salon en masse\n`!whitelist @cible` - Ajouter à la liste blanche\n`!unwhitelist @cible` - Retirer de la liste blanche\n`!react [RoleID] [Emoji]` - Créer un Reaction-Role" 
+            });
+        }
+
+        // Réponse éphémère (uniquement visible par l'appelant)
+        await interaction.reply({ embeds: [embedHelp], ephemeral: true });
+    }
+
+    // ==========================================
+    // 🗑️ COMMANDE CORRIGÉE : /CLEAR
+    // ==========================================
+    if (commandName === 'clear') {
+        // Double sécurité au cas où (même si Discord cache déjà le raccourci aux non-admins)
+        if (!guild || !member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return await interaction.reply({ content: "❌ Seuls les administrateurs peuvent utiliser cette commande.", ephemeral: true });
+        }
+
+        const nombreDeMessages = options.getInteger('nombre');
+
+        if (nombreDeMessages < 1 || nombreDeMessages > 99) {
+            return await interaction.reply({ content: "❌ Indiquez un nombre entre 1 et 99.", ephemeral: true });
+        }
+
+        // Étape 1 : Demande de confirmation
+        await interaction.reply({ 
+            content: `⚠️ Confirmez la suppression de **${nombreDeMessages}** messages en tapant \`!ok\` ou \`!cancel\` dans le salon.`, 
+            ephemeral: false 
+        });
+
+        // Collecteur de confirmation textuelle
+        const filtreConfirmation = response => response.author.id === interaction.user.id && ['!ok', '!cancel'].includes(response.content.toLowerCase());
+        const collector = interaction.channel.createMessageCollector({ filter: filtreConfirmation, time: 15000, max: 1 });
+
+        collector.on('collect', async (reponseMessage) => {
+            if (reponseMessage.content.toLowerCase() === '!ok') {
+                try {
+                    // +1 pour inclure le message de confirmation "!ok"
+                    const messagesDuSalon = await interaction.channel.messages.fetch({ limit: nombreDeMessages + 1 });
+                    const limite14Jours = Date.now() - (14 * 24 * 60 * 60 * 1000);
+                    const messagesSupprimables = messagesDuSalon.filter(msg => msg.createdTimestamp > limite14Jours);
+                    
+                    if (messagesSupprimables.size > 0) {
+                        await interaction.channel.bulkDelete(messagesSupprimables);
+                    }
+
+                    await interaction.editReply({ content: `🗑️ Nettoyage de **${messagesSupprimables.size - 1}** messages effectué avec succès !` });
+                    await reponseMessage.delete().catch(() => {});
+                    
+                    // Nettoie l'alerte du bot après 5 secondes
+                    setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
+                } catch (error) {
+                    console.error(error);
+                    await interaction.followUp({ content: "❌ Erreur interne lors de l'exécution du bulkDelete.", ephemeral: true });
+                }
+            } else {
+                await interaction.editReply({ content: "❌ Suppression annulée." });
+                await reponseMessage.delete().catch(() => {});
+                setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            }
+        });
+
+        collector.on('end', async (collected, reason) => {
+            if (reason === 'time') {
+                await interaction.editReply({ content: "⏱️ Temps écoulé. Suppression automatique annulée." }).catch(() => {});
+                setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            }
+        });
     }
 });
-// #endregion
+
+// Connexion finale du client à l'infrastructure Discord
+client.login(process.env.DISCORD_TOKEN);

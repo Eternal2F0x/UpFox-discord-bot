@@ -1,70 +1,115 @@
-# 🦊 UpFox Discord Bot — Documentation Finale (V2)
+# 🦊 UpFox - Bot Discord Multi-Fonctions
 
-UpFox est un bot Discord autonome et polyvalent développé dans le cadre d'un apprentissage pratique en **BUT Informatique (1ère année)**. Il centralise des fonctionnalités communautaires et intègre un puissant moteur d'**Auto-Modération centralisé avec logs et immunités dynamiques**, calqué sur les standards de bots professionnels comme *DraftBot*.
-
----
-
-## 📂 Organisation du Code Source (`index.js`)
-
-Le script principal est structuré en **9 régions sémantiques distinctes** pour assurer une lisibilité et une maintenance optimales (dépliables/pliables via les balises `// #region` dans votre IDE) :
-
-1.  **`1. CONFIGURATION INITIALE & LOGICIELLE` :** Chargement des variables cryptographiques d'environnement (`dotenv`) et instanciation du client Discord Client avec ses IntentBits et Partials associés.
-2.  **`2. PARAMÈTRES DE CONFIGURATION DES SALONS & CONSTANTES` :** Déclaration centralisée des identifiants (IDs) des salons (Bienvenue, Annonces, Salon privé des Logs du Staff) et de la liste noire lexicale.
-3.  **`3. STRUCTURES DE DONNÉES EN MÉMOIRE (STATE)` :** Déclaration des structures de stockage dynamique (Base de données des avertissements via `Map`, gestionnaires d'immunités via `Set`, historiques pour l'anti-spam).
-4.  **`4. SERVEUR HTTP FANTÔME (KEEP-ALIVE RENDER)` :** Serveur d'écoute réseau natif Node.js pour valider le *Port Binding* sur l'infrastructure Cloud de Render et contrer la mise en veille automatique.
-5.  **`5. FONCTIONS DE SERVICES APIS (TWITCH / GOOGLE)` :** Centralisation des requêtes asynchrones HTTP (`axios`) pour récupérer les tokens éphémères de sécurité OAuth2 de l'API Twitch Helix.
-6.  **`6. ÉVÉNEMENT : INITIALISATION & AUTOMATE TWITCH` :** Lancement de l'écoute du bot et du planificateur récurrent (intervalle de 5 minutes) vérifiant le statut de streaming.
-7.  **`7. ÉVÉNEMENTS : GESTION DES FLUX DE MEMBRES (ACCUEIL)` :** Hooks événementiels d'entrées (`guildMemberAdd`) et de sorties (`guildMemberRemove`) du serveur.
-8.  **`8. ÉVÉNEMENT CENTRAL : TRAITEMENT DES MESSAGES` :** Le cœur du bot contenant le routeur d'Auto-Mod passive, les commandes d'immunités (Whitelist), les utilitaires de modération (Warn, Mute, Clear) et les fonctions publiques (Hello, Roll, Twitch, Youtube).
-9.  **`9. SÉCURITÉ GLOBO-SYSTÈME & CONNEXION` :** Intercepteur global (`unhandledRejection`) empêchant l'application de crasher en cas de rejet de promesse asynchrone non capturé, suivi de l'initialisation de session par jeton (`client.login`).
+UpFox est un bot Discord robuste développé en **JavaScript (Node.js)** avec la bibliothèque **Discord.js v14**. Conçu initialement pour la gestion d'un clan, il intègre un système moderne de **Slash Commands**, un moteur d'**auto-modération passive**, ainsi que des modules d'**automatisation d'alertes de streaming et de contenu vidéo**.
 
 ---
 
-## 🛡️ Spécifications du Moteur d'Auto-Modération
+## 🚀 Fonctionnalités Clés
 
-Le bot applique un contrôle passif sur l'ensemble des messages du serveur (sauf si l'auteur est un robot, un modérateur natif ou possède une immunité) :
+### 💻 Commandes Intuitives (Slash Commands)
+Bénéficie de l'autocomplétion native de Discord pour une meilleure expérience utilisateur :
+* `/uphelp` : Affiche le centre d'aide dynamique en mode éphémère (visible uniquement par l'appelant) trié selon les permissions de l'utilisateur.
+* `/hello` : Salue l'utilisateur de manière interactive.
+* `/roll` : Simule le lancer d'un dé à 6 faces.
 
-* **Filtre Lexical (Insultes) :** Conversion du message au format minuscule (`.toLowerCase()`) et vérification d'inclusion d'un mot proscrit de la liste via la méthode JavaScript `.some()`.
-* **Anti-CAPSLOCK (Abus de Majuscules) :** Filtrage sélectif du texte via l'expression régulière `/[^A-Z]/g` pour dénombrer les majuscules. Si le message fait plus de 10 caractères et contient plus de **70% de lettres capitales**, le message est intercepté.
-* **Anti-Spam (Fenêtre Glissante) :** Stockage des timestamps UNIX (`Date.now()`) dans un tableau propre à chaque utilisateur. Le bot effectue une purge continue pour ne garder que les messages envoyés au cours des **4 dernières secondes**. Si un utilisateur atteint plus de **4 messages** dans cet intervalle, la sanction s'applique.
+### 🛡️ Système d'Auto-Modération & Sécurité
+Un moteur passif analyse chaque message envoyé sur le serveur (hors modérateurs et membres immunisés) :
+* **Filtre anti-insultes** : Suppression automatique des messages contenant des mots proscrits avec avertissement public temporaire.
+* **Détection d'abus de majuscules** : Interception des messages contenant plus de 70% de lettres capitales (CAPSLOCK).
+* **Algorithme Anti-Spam** : Bloque les flux de messages excessifs basés sur une fenêtre glissante temporelle (max 4 messages en 4 secondes).
+* **Logs dédiés** : Envoi automatique d'un rapport détaillé (Embed complet avec contexte, auteur, salon et contenu effacé) dans un salon de logs privé.
 
-### 📝 Chaîne d'action lors d'une infraction :
-1.  Suppression immédiate du message malveillant via `.delete()`.
-2.  Envoi d'une alerte publique temporaire dans le salon textuel (auto-détruite après 6 secondes pour ne pas polluer l'espace communautaire).
-3.  Envoi d'un rapport complet (`EmbedBuilder` rouge) dans le **salon privé de logs du staff**, spécifiant l'identité de l'auteur, l'ID, le salon concerné, le motif exact du blocage, ainsi qu'une copie du texte intercepté.
+### ⚔️ Gestion du Staff & Modération Textuelle (`!`)
+* `!warn` / `!unwarn` : Gestion des avertissements cumulatifs (expulsion automatique au bout de 3 *warns*).
+* `!mute` / `!unmute` : Exclusion temporelle d'un membre (*timeout* natif de Discord).
+* `!kick` / `!ban` : Expulsion et bannissement définitif respectant la hiérarchie des rôles.
+* `!whitelist` / `!unwhitelist` : Permet d'immuniser dynamiquement un rôle ou un utilisateur spécifique contre le moteur d'Auto-Mod.
+* `!muteall` / `!unmuteall` : Verrouillage/Déverrouillage rapide d'un salon complet (gestion du rôle `@everyone`).
 
----
-
-## ⚔️ Commandes de Modération & Immunités (Style DraftBot)
-
-### 🛡️ Gestion de la Whitelist (Immunités)
-* `!whitelist role <ID_ROLE>` : Ajoute un rôle complet à la liste des immunités.
-* `!whitelist user <ID_USER>` : Ajoute un membre spécifique (par son ID) à la liste des immunités.
-* `!unwhitelist role <ID_ROLE>` : Retire l'immunité d'un rôle.
-* `!unwhitelist user <ID_USER>` : Retire l'immunité d'un membre.
-
-*Note de BUT Informatique :* L'implémentation utilise des objets JavaScript `Set()` (au lieu d'un `Array`). Cela permet d'obtenir une complexité algorithmique optimale de **O(1)** lors de la vérification d'existence (`.has()`) au passage de chaque message.
-
-### 🔨 Sanctions directes
-* `!warn @membre [raison]` : Attribue un avertissement stocké dans une `Map`. À **3 warns**, le bot applique automatiquement un `kick` (expulsion) du membre.
-* `!unwarn @membre` : Décrémente le compteur d'avertissements du membre ciblé.
-* `!mute @membre <minutes> [raison]` : Applique une exclusion temporaire native Discord (*Timeout*) de la durée spécifiée.
-* `!unmute @membre` : Révoque le timeout d'un membre de manière anticipée.
-* `!kick @membre [raison]` : Expulse immédiatement le membre du serveur.
-* `!ban @membre [raison]` : Bannit définitivement le membre du serveur.
-
-### 🗑️ Utilitaires de salon
-* `!clear <nombre>` : Demande la suppression de $X$ messages (entre 1 et 99). Le bot demande une confirmation de sécurité (`!ok` ou `!cancel`). Il intègre une sécurité excluant les messages de plus de 14 jours pour éviter les rejets de l'API Discord.
-* `!muteAll` : *(Admin)* Verrouille l'écriture du salon textuel pour le rôle `@everyone`.
-* `!unmuteAll` : *(Admin)* Restaure les permissions d'écriture par défaut du salon pour le rôle `@everyone`.
+### 📡 Automatisation & Connecteurs APIs Externes
+* **Automate Twitch** : Vérification asynchrone toutes les 5 minutes du statut d'une chaîne Twitch (via protocole OAuth2 et API Helix). Envoi automatique d'un Embed d'alerte avec miniature dynamique lors du passage en LIVE.
+* **Module YouTube** : Récupération de la dernière vidéo publiée sur une chaîne via l'API Google v3 YouTube Data.
+* **Reaction Role (`!react`)** : Collecteur d'interactions persistant permettant d'attribuer ou de retirer un rôle de manière automatisée lors de l'ajout/retrait d'une réaction.
 
 ---
 
-## 🔑 Variables d'Environnement Clés (Render.com)
+## 🛠️ Pile Technologique (Tech Stack)
 
-Afin de respecter les exigences de sécurité fondamentales, les variables suivantes doivent être déclarées au sein du panneau de contrôle de l'hébergeur :
-* `DISCORD_TOKEN` : Jeton d'authentification secret de l'application Discord Developer.
-* `PORT` : Port réseau d'écoute (injecté automatiquement par Render, par défaut `3000`).
-* `TWITCH_CLIENT_ID` & `TWITCH_CLIENT_SECRET` : Clés applicatives de la console Twitch Dev.
-* `TWITCH_CHANNEL_NAME` : Nom exact de la chaîne à écouter (ex: `f0x_soul`).
-* `YOUTUBE_API_KEY` & `YOUTUBE_CHANNEL_ID` : Paramètres d'accès aux services de données Google Cloud.
+* **Environnement d'exécution** : Node.js (v16.x ou supérieure)
+* **Bibliothèque principale** : Discord.js v14
+* **Requêtes HTTP & APIs REST** : Axios
+* **Hébergement & Keep-Alive** : Serveur HTTP natif inclus pour assurer le *ping* de maintien en ligne (idéal pour des plateformes comme Render).
+
+---
+
+## ⚙️ Configuration et Installation
+
+### 1. Prérequis
+Assure-toi d'avoir installé Node.js sur ton environnement de développement.
+
+### 2. Clonage et installation des dépendances
+```bash
+git clone <url-de-ton-depot>
+cd upfox-bot
+npm install
+3. Variables d'environnement (.env)
+Crée un fichier .env à la racine de ton projet et renseigne les jetons d'accès et identifiants requis :
+
+Extrait de code
+# Discord Configuration
+DISCORD_TOKEN=ton_token_de_bot_discord
+
+# Twitch API Configuration
+TWITCH_CLIENT_ID=ton_client_id_twitch
+TWITCH_CLIENT_SECRET=ton_client_secret_twitch
+TWITCH_CHANNEL_NAME=nom_de_la_chaine_twitch
+
+# YouTube API Configuration
+YOUTUBE_API_KEY=ta_cle_api_google_youtube
+YOUTUBE_CHANNEL_ID=id_de_la_chaine_youtube
+
+# Network (Optionnel pour Render)
+PORT=3000
+4. Configuration des salons (dans index.js)
+Pense à modifier les identifiants de salons uniques au début du fichier index.js pour correspondre à ton serveur Discord de production :
+
+JavaScript
+const ID_SALON_BIENVENUE = "1408157176316559420";
+const ID_SALON_ANNONCES = "1407775485093478593"; 
+const ID_SALON_LOGS_MODERATION = "1407801890380709939";
+🚀 Lancement
+Pour démarrer le bot en mode production :
+
+Bash
+node index.js
+Au démarrage, le bot va automatiquement enregistrer et actualiser son registre de Slash Commands auprès de l'API de Discord Gateway. Tu devrais voir apparaître les confirmations suivantes dans ta console :
+
+Plaintext
+🌐 Serveur fantôme Render activé sur le port 3000
+🔄 Enregistrement des Slash Commands auprès de Discord...
+✅ Slash Commands enregistrées avec succès !
+🤖 Bot connecté avec succès en tant que UpFox#1234!
+⏱️ [Automate] Boucle de vérification Twitch initialisée.
+🧑‍💻 Architecture du Code
+Le projet est architecturé de manière monolithique mais structuré proprement en régions (#region) sémantiques permettant une maintenance aisée :
+
+Configuration Initiale & Enregistrement API REST
+
+Paramètres et Constantes des Salons
+
+Structures de données en mémoire vive (State)
+
+Serveur HTTP Keep-Alive
+
+Couche Services d'intégration APIs
+
+Événements de cycle de vie (ready)
+
+Événements de flux de membres (guildMemberAdd, guildMemberRemove)
+
+Événement central des messages textuels (messageCreate)
+
+Gestion globale des exceptions système (Unhandled Rejections)
+
+Gestionnaire d'interactions d'interface utilisateur (interactionCreate)
+""");
