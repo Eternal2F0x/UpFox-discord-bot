@@ -19,6 +19,16 @@ const client = new Client({
     ]
 });
 
+// --- PETIT SERVEUR FANTÔME POUR RENDER ---
+const http = require('http');
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot UpFox en ligne ! ⚔️');
+}).listen(process.env.PORT || 3000, () => {
+    console.log(`🌐 Serveur fantôme Render activé sur le port ${process.env.PORT || 3000}`);
+});
+// ----------------------------------------
+
 const PREFIX = '!';
 const ID_SALON_BIENVENUE = "1408157176316559420";
 const ID_SALON_ANNONCES = "1407775485093478593"; // Ton salon d'annonces / NewsChannel
