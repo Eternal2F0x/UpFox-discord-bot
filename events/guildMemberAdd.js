@@ -15,7 +15,7 @@ module.exports = {
         try {
             const salonBienvenue = await membre.guild.channels.fetch(idSalon);
             if (salonBienvenue) {
-                await salonBienvenue.send(`🦊 Bienvenue au sein du clan, ${membre} ! Amuse-toi bien parmi nous.`);
+                await salonBienvenue.send(`🦊 Bienvenue au sein du clan, ${membre} ! Prend une chope 🍺 et amuse-toi bien parmi nous.`);
             }
         } catch (error) {
             // Gestion des erreurs spécifiques à l'API Discord

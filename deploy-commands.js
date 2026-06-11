@@ -24,8 +24,13 @@ const commands = [
     new SlashCommandBuilder().setName('clear').setDescription('Supprime des messages.').addIntegerOption(o => o.setName('nombre').setDescription('1-99').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('whitelist').setDescription('Immunise un membre/rôle.').addMentionableOption(o => o.setName('cible').setDescription('Cible').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('unwhitelist').setDescription('Retire l\'immunité.').addMentionableOption(o => o.setName('cible').setDescription('Cible').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    new SlashCommandBuilder().setName('react').setDescription('Configure un Reaction-Role.').addRoleOption(o => o.setName('role').setDescription('Le rôle').setRequired(true)).addStringOption(o => o.setName('emoji').setDescription('L\'emoji').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-].map(command => command.toJSON());
+    new SlashCommandBuilder()
+        .setName('react')
+        .setDescription('Ajoute un Reaction-Role à un message existant.')
+        .addStringOption(o => o.setName('message_id').setDescription('L\'ID du message cible (dans ce salon)').setRequired(true))
+        .addRoleOption(o => o.setName('role').setDescription('Le rôle à donner/retirer').setRequired(true))
+        .addStringOption(o => o.setName('emoji').setDescription('L\'emoji à utiliser').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
