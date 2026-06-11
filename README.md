@@ -1,115 +1,110 @@
-# 🦊 UpFox - Bot Discord Multi-Fonctions
+# 🦊 UpFox Bot
 
-UpFox est un bot Discord robuste développé en **JavaScript (Node.js)** avec la bibliothèque **Discord.js v14**. Conçu initialement pour la gestion d'un clan, il intègre un système moderne de **Slash Commands**, un moteur d'**auto-modération passive**, ainsi que des modules d'**automatisation d'alertes de streaming et de contenu vidéo**.
-
----
-
-## 🚀 Fonctionnalités Clés
-
-### 💻 Commandes Intuitives (Slash Commands)
-Bénéficie de l'autocomplétion native de Discord pour une meilleure expérience utilisateur :
-* `/uphelp` : Affiche le centre d'aide dynamique en mode éphémère (visible uniquement par l'appelant) trié selon les permissions de l'utilisateur.
-* `/hello` : Salue l'utilisateur de manière interactive.
-* `/roll` : Simule le lancer d'un dé à 6 faces.
-
-### 🛡️ Système d'Auto-Modération & Sécurité
-Un moteur passif analyse chaque message envoyé sur le serveur (hors modérateurs et membres immunisés) :
-* **Filtre anti-insultes** : Suppression automatique des messages contenant des mots proscrits avec avertissement public temporaire.
-* **Détection d'abus de majuscules** : Interception des messages contenant plus de 70% de lettres capitales (CAPSLOCK).
-* **Algorithme Anti-Spam** : Bloque les flux de messages excessifs basés sur une fenêtre glissante temporelle (max 4 messages en 4 secondes).
-* **Logs dédiés** : Envoi automatique d'un rapport détaillé (Embed complet avec contexte, auteur, salon et contenu effacé) dans un salon de logs privé.
-
-### ⚔️ Gestion du Staff & Modération Textuelle (`!`)
-* `!warn` / `!unwarn` : Gestion des avertissements cumulatifs (expulsion automatique au bout de 3 *warns*).
-* `!mute` / `!unmute` : Exclusion temporelle d'un membre (*timeout* natif de Discord).
-* `!kick` / `!ban` : Expulsion et bannissement définitif respectant la hiérarchie des rôles.
-* `!whitelist` / `!unwhitelist` : Permet d'immuniser dynamiquement un rôle ou un utilisateur spécifique contre le moteur d'Auto-Mod.
-* `!muteall` / `!unmuteall` : Verrouillage/Déverrouillage rapide d'un salon complet (gestion du rôle `@everyone`).
-
-### 📡 Automatisation & Connecteurs APIs Externes
-* **Automate Twitch** : Vérification asynchrone toutes les 5 minutes du statut d'une chaîne Twitch (via protocole OAuth2 et API Helix). Envoi automatique d'un Embed d'alerte avec miniature dynamique lors du passage en LIVE.
-* **Module YouTube** : Récupération de la dernière vidéo publiée sur une chaîne via l'API Google v3 YouTube Data.
-* **Reaction Role (`!react`)** : Collecteur d'interactions persistant permettant d'attribuer ou de retirer un rôle de manière automatisée lors de l'ajout/retrait d'une réaction.
+UpFox est un bot Discord de modération, d'administration et d'automatisation communautaire écrit en **JavaScript** avec la bibliothèque **Discord.js (v14)**. Conçu dans une optique de modularité et de scalabilité, le projet sépare rigoureusement ses commandes selon le principe de séparation des préoccupations (*Separation of Concerns*).
 
 ---
 
-## 🛠️ Pile Technologique (Tech Stack)
+## 🚀 Fonctionnalités Principales
 
-* **Environnement d'exécution** : Node.js (v16.x ou supérieure)
-* **Bibliothèque principale** : Discord.js v14
-* **Requêtes HTTP & APIs REST** : Axios
-* **Hébergement & Keep-Alive** : Serveur HTTP natif inclus pour assurer le *ping* de maintien en ligne (idéal pour des plateformes comme Render).
+* **🛡️ AutoMod Passif :** Système automatique de détection du spam temporel, filtrage des insultes/grossièretés et contrôle de l'abus de majuscules (CapsLock).
+* **⚔️ Commandes de Modération Natives :** Intégration complète via les *Slash Commands* de Discord (Avertissements cumulatifs, exclusions temporaires, kick, ban).
+* **⚙️ Outils d'Administration :** Système de nettoyage intelligent (`/clear`) sécurisé par une double confirmation, et système d'auto-attribution de rôles par réactions (`/react`).
+* **📢 Notifications Externes :** Scanners automatisés toutes les 5 minutes connectés aux APIs de **Twitch** (Helix) et **YouTube (v3)** pour annoncer les streams et vidéos en direct.
 
 ---
 
-## ⚙️ Configuration et Installation
+## 📁 Architecture du Projet
+
+Le projet a été restructuré pour éviter un fichier monolithique, décomposant chaque commande dans son propre module :
+
+```text
+upfox-bot/
+├── .github/              # Workflows d'intégration continue / CI-CD
+├── commands/             # Répertoire des commandes modulaires (Command Handler)
+│   ├── public/           # Commandes ouvertes à tous (hello, roll, uphelp)
+│   ├── moderation/       # Commandes réservées aux modérateurs (warn, mute, kick...)
+│   └── admin/            # Commandes critiques réservées aux administrateurs (clear, react...)
+├── deploy-commands.js    # Script indépendant d'enregistrement des Slash Commands
+├── index.js              # Point d'entrée principal (Gestion des événements et APIs)
+├── package.json          # Configuration Node.js et dépendances du projet
+└── .env                  # Fichier de configuration des variables d'environnement (Masqué)
+
+```
+
+---
+
+## 🛠️ Installation et Configuration
 
 ### 1. Prérequis
-Assure-toi d'avoir installé Node.js sur ton environnement de développement.
 
-### 2. Clonage et installation des dépendances
+* [Node.js](https://nodejs.org/) (Version 16.11.0 ou supérieure requise)
+* Un compte développeur sur le [Discord Developer Portal](https://www.google.com/search?q=https://discord.com/developers/applications)
+
+### 2. Clonage et Installation des dépendances
+
 ```bash
-git clone <url-de-ton-depot>
+git clone [https://github.com/votre-utilisateur/upfox-bot.git](https://github.com/votre-utilisateur/upfox-bot.git)
 cd upfox-bot
 npm install
-3. Variables d'environnement (.env)
-Crée un fichier .env à la racine de ton projet et renseigne les jetons d'accès et identifiants requis :
 
-Extrait de code
-# Discord Configuration
-DISCORD_TOKEN=ton_token_de_bot_discord
+```
 
-# Twitch API Configuration
-TWITCH_CLIENT_ID=ton_client_id_twitch
-TWITCH_CLIENT_SECRET=ton_client_secret_twitch
+### 3. Variables d'environnement
+
+Créez un fichier `.env` à la racine du projet et complétez les variables suivantes :
+
+```env
+DISCORD_TOKEN=votre_token_secret_discord
+DISCORD_CLIENT_ID=id_unique_de_votre_application_discord
+
+TWITCH_CLIENT_ID=votre_client_id_twitch
+TWITCH_CLIENT_SECRET=votre_client_secret_twitch
 TWITCH_CHANNEL_NAME=nom_de_la_chaine_twitch
 
-# YouTube API Configuration
-YOUTUBE_API_KEY=ta_cle_api_google_youtube
+YOUTUBE_API_KEY=votre_cle_api_google_cloud
 YOUTUBE_CHANNEL_ID=id_de_la_chaine_youtube
 
-# Network (Optionnel pour Render)
 PORT=3000
-4. Configuration des salons (dans index.js)
-Pense à modifier les identifiants de salons uniques au début du fichier index.js pour correspondre à ton serveur Discord de production :
 
-JavaScript
-const ID_SALON_BIENVENUE = "1408157176316559420";
-const ID_SALON_ANNONCES = "1407775485093478593"; 
-const ID_SALON_LOGS_MODERATION = "1407801890380709939";
-🚀 Lancement
-Pour démarrer le bot en mode production :
+```
 
-Bash
-node index.js
-Au démarrage, le bot va automatiquement enregistrer et actualiser son registre de Slash Commands auprès de l'API de Discord Gateway. Tu devrais voir apparaître les confirmations suivantes dans ta console :
+---
 
-Plaintext
-🌐 Serveur fantôme Render activé sur le port 3000
-🔄 Enregistrement des Slash Commands auprès de Discord...
-✅ Slash Commands enregistrées avec succès !
-🤖 Bot connecté avec succès en tant que UpFox#1234!
-⏱️ [Automate] Boucle de vérification Twitch initialisée.
-🧑‍💻 Architecture du Code
-Le projet est architecturé de manière monolithique mais structuré proprement en régions (#region) sémantiques permettant une maintenance aisée :
+## 🚦 Utilisation
 
-Configuration Initiale & Enregistrement API REST
+### Enregistrement des Raccourcis (Slash Commands)
 
-Paramètres et Constantes des Salons
+Avant de lancer le bot pour la première fois ou suite à l'ajout d'une nouvelle commande, vous devez forcer la synchronisation des commandes auprès de l'API de Discord :
 
-Structures de données en mémoire vive (State)
+```bash
+node deploy-commands.js
 
-Serveur HTTP Keep-Alive
+```
 
-Couche Services d'intégration APIs
+### Lancement du Bot
 
-Événements de cycle de vie (ready)
+Pour démarrer l'application principale :
 
-Événements de flux de membres (guildMemberAdd, guildMemberRemove)
+```bash
+npm start
 
-Événement central des messages textuels (messageCreate)
+```
 
-Gestion globale des exceptions système (Unhandled Rejections)
+*Note : Le projet intègre un serveur HTTP Keep-Alive minimaliste sur le port spécifié, facilitant son hébergement permanent 24/7 sur des plateformes de type Cloud (Render, Railway, etc.).*
 
-Gestionnaire d'interactions d'interface utilisateur (interactionCreate)
-""");
+---
+
+## 🔒 Sécurité & Permissions
+
+Le bot utilise le système de permissions natif de Discord (`setDefaultMemberPermissions`).
+
+* Les commandes de la catégorie **Modération** requièrent la permission `ManageMessages`.
+* Les commandes de la catégorie **Admin** (comme `/clear`) requièrent explicitement les privilèges `Administrator`.
+
+Les utilisateurs ne possédant pas ces droits se verront automatiquement masqués l'accès à ces raccourcis directement depuis l'interface de leur application Discord.
+
+---
+
+## 🎓 Contexte Pédagogique
+
+Ce projet a été réalisé et restructuré dans le cadre d'un apprentissage des architectures événementielles et asynchrones en JavaScript (Node.js), en appliquant les bonnes pratiques de programmation enseignées en **BUT Informatique**.
