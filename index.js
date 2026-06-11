@@ -27,8 +27,8 @@ const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 const slashCommandsJSON = [
     // Commande /help
     new SlashCommandBuilder()
-        .setName('help')
-        .setDescription('Affiche la liste de toutes les commandes disponibles sur le bot UpFox.'),
+    .setName('uphelp') // 🎯 Un nom unique qui ne rentre pas en conflit avec les autres bots
+    .setDescription('Affiche la liste de toutes les commandes disponibles sur le bot UpFox.'),
 
     // Commande /hello
     new SlashCommandBuilder()
@@ -717,7 +717,7 @@ client.on('interactionCreate', async (interaction) => {
     // ==========================================
     // 📖 COMMANDE : /HELP
     // ==========================================
-    if (commandName === 'help') {
+    if (commandName === 'unhelp') {
         const hasModPerms = member.permissions.has(PermissionFlagsBits.ManageMessages);
         const isServerAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
 
