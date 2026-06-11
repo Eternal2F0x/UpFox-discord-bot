@@ -20,15 +20,14 @@ const client = new Client({
     ]
 });
 
-// #region 1. CONFIGURATION INITIALE & REGISTRE SLASH COMMANDS
 const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 
 // Définition des commandes à enregistrer auprès de Discord
 const slashCommandsJSON = [
-    // Commande /help
+    // Commande /uphelp
     new SlashCommandBuilder()
-    .setName('uphelp') // 🎯 Un nom unique qui ne rentre pas en conflit avec les autres bots
-    .setDescription('Affiche la liste de toutes les commandes disponibles sur le bot UpFox.'),
+        .setName('uphelp') // 🎯 Identifiant unique et cohérent
+        .setDescription('Affiche la liste de toutes les commandes disponibles sur le bot UpFox.'),
 
     // Commande /hello
     new SlashCommandBuilder()
@@ -50,12 +49,11 @@ const slashCommandsJSON = [
                 .setRequired(true))
 ].map(command => command.toJSON());
 
-// Fonction asynchrone pour envoyer les commandes à l'API de Discord
-client.once('clientReady', async () => {
+// Fonction asynchrone pour envoyer les commandes à l'API de Discord (Correction de l'événement en 'ready')
+client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         console.log('🔄 Enregistrement des Slash Commands auprès de Discord...');
-        // Application globale des commandes sur l'ID de ton application
         await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: slashCommandsJSON },
@@ -65,9 +63,8 @@ client.once('clientReady', async () => {
         console.error('❌ Erreur lors de l\'enregistrement des Slash Commands :', error);
     }
 });
-// #endregion
 
-const PREFIX = '!';
+const PREFIX = '/';
 // #endregion
 
 // #region 2. PARAMÈTRES DE CONFIGURATION DES SALONS & CONSTANTES
@@ -75,24 +72,18 @@ const ID_SALON_BIENVENUE = "1408157176316559420";
 const ID_SALON_ANNONCES = "1407775485093478593"; 
 const ID_SALON_LOGS_MODERATION = "1407801890380709939";
 
-// Liste des mots interdits pour l'auto-modération
-const MOTS_INTERDITS = ["nigger", "fils de pute", "connard", "merde"]; // ⚠️ Complète cette liste avec les mots proscrits
+const MOTS_INTERDITS = ["nigger", "fils de pute", "connard", "merde"]; 
 // #endregion
 
 // #region 3. STRUCTURES DE DONNÉES EN MÉMOIRE (STATE)
 let twitchIsLive = false; 
-
-// Base de données temporaire pour les avertissements accumulés (Key: userId, Value: entier)
 const warnDatabase = new Map();
-
-// Listes d'immunités pour l'Auto-Mod (Modifiables via !whitelist / !unwhitelist)
 const ROLES_IMMUNISES = new Set(); 
 const MEMBRES_IMMUNISES = new Set(); 
 
-// Anti-Spam (Key: userId, Value: Array de timestamps)
 const antiSpamMap = new Map();
-const LIMITE_SPAM_MESSAGES = 4; // Nombre maximal de messages autorisés
-const LIMITE_SPAM_TEMPS = 4000;  // Dans une fenêtre glissante de 4000 ms (4 secondes)
+const LIMITE_SPAM_MESSAGES = 4; 
+const LIMITE_SPAM_TEMPS = 4000;  
 // #endregion
 
 // #region 4. SERVEUR HTTP FANTÔME (KEEP-ALIVE RENDER)
@@ -105,9 +96,6 @@ http.createServer((req, res) => {
 // #endregion
 
 // #region 5. FONCTIONS DE SERVICES APIS (TWITCH / GOOGLE)
-/**
- * Récupère le token d'accès OAuth2 auprès de l'API Twitch Identity
- */
 async function getTwitchAccessToken() {
     try {
         const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
@@ -126,7 +114,7 @@ async function getTwitchAccessToken() {
 // #endregion
 
 // #region 6. ÉVÉNEMENT : INITIALISATION & AUTOMATE TWITCH
-client.once('clientReady', () => {
+client.once('ready', () => {
     console.log(`🤖 Bot connecté avec succès en tant que ${client.user.tag}!`);
     console.log("⏱️ [Automate] Boucle de vérification Twitch initialisée.");
     
@@ -222,24 +210,19 @@ client.on('messageCreate', async (message) => {
     // ==========================================================
     // 🛡️ SUB-SECTION : MOTEUR D'AUTO-MODÉRATION PASSIVE
     // ==========================================================
-    
-    // Évaluation des privilèges d'invulnérabilité
     const aRoleImmunise = message.member.roles.cache.some(role => ROLES_IMMUNISES.has(role.id));
     const estMembreImmunise = MEMBRES_IMMUNISES.has(message.author.id);
 
-    // Si le membre n'est ni modérateur, ni immunisé par rôle ou ID, on lance les filtres
     if (!hasManageMessages && !aRoleImmunise && !estMembreImmunise) {
         let raisonSanction = null;
         const texteBrut = message.content.trim();
 
-        // ANALYSE 1 : Détection des insultes et vocabulaire proscrit
         const messageNormalise = texteBrut.toLowerCase();
         const contientInsulte = MOTS_INTERDITS.some(mot => messageNormalise.includes(mot));
         if (contientInsulte) {
             raisonSanction = "Langage vulgaire / Mots interdits";
         }
 
-        // ANALYSE 2 : Détection de l'abus de majuscules (CAPSLOCK)
         if (!raisonSanction && texteBrut.length > 10) {
             const countMajuscules = texteBrut.replace(/[^A-Z]/g, "").length;
             const countLettresTotales = texteBrut.replace(/[^a-zA-Z]/g, "").length;
@@ -249,7 +232,6 @@ client.on('messageCreate', async (message) => {
             }
         }
 
-        // ANALYSE 3 : Détection de spam (Algorithme par fenêtre temporelle)
         if (!raisonSanction) {
             const maintenant = Date.now();
             if (!antiSpamMap.has(message.author.id)) {
@@ -259,7 +241,6 @@ client.on('messageCreate', async (message) => {
             const historiqueTimestamps = antiSpamMap.get(message.author.id);
             historiqueTimestamps.push(maintenant);
 
-            // Filtrage des messages pour ne conserver que les plus récents dans la zone critique
             const messagesRecents = historiqueTimestamps.filter(t => maintenant - t < LIMITE_SPAM_TEMPS);
             antiSpamMap.set(message.author.id, messagesRecents);
 
@@ -268,7 +249,6 @@ client.on('messageCreate', async (message) => {
             }
         }
 
-        // ACTION DE SANCTION ET CRÉATION DU LOG PRIVÉ STAFF
         if (raisonSanction) {
             await message.delete().catch(() => {});
 
@@ -295,12 +275,12 @@ client.on('messageCreate', async (message) => {
             } catch (err) {
                 console.error("Échec d'envoi du log d'auto-modération :", err.message);
             }
-            return; // Interruption immédiate du traitement pour ce message
+            return; 
         }
     }
 
     // ==========================================================
-    // 🎭 SUB-SECTION : MODULES COMPORTEMENTAUX ET RÉACTIONS AUTOMATIQUES
+    // 🎭 MODULES COMPORTEMENTAUX
     // ==========================================================
     const emojiPanneau = "<:Happy_sign:1514169900179128380>";
     if (message.content.includes(emojiPanneau)) {
@@ -311,15 +291,13 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // Interruption si le message ne commence pas par le préfixe configuré
     if (!message.content.startsWith(PREFIX)) return;
 
-    // Découpage sémantique des arguments et de la commande
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
     // ==========================================================
-    // 👤 SUB-SECTION : COMMANDES PUBLIQUES (TOUS UTILISATEURS)
+    // 👤 COMMANDES PUBLIQUES TEXTUELLES
     // ==========================================================
     if (command === 'hello') {
         return message.channel.send(`Salut ${message.author.username} alias ${message.author.displayName} !👋`);
@@ -334,7 +312,6 @@ client.on('messageCreate', async (message) => {
         try {
             const channelName = process.env.TWITCH_CHANNEL_NAME;
             const twitchUrl = `https://twitch.tv/${channelName}`;
-            
             const token = await getTwitchAccessToken();
             if (!token) return message.reply("❌ Impossible de se connecter à l'API Twitch actuellement.");
 
@@ -408,11 +385,10 @@ client.on('messageCreate', async (message) => {
     }
 
     // ==========================================================
-    // ⚔️ SUB-SECTION : COMMANDES DE MODÉRATION & CONFIG AUTOMOD (STAFF)
+    // ⚔️ COMMANDES DE MODÉRATION (STAFF)
     // ==========================================================
-    if (!hasManageMessages) return; // Sécurité de garde d'accès pour les modérateurs
+    if (!hasManageMessages) return;
 
-    // CONFIGURATION D'IMMUNITÉ : AJOUT (!whitelist)
     if (command === 'whitelist') {
         const type = args[0]; 
         const targetId = args[1];
@@ -433,7 +409,6 @@ client.on('messageCreate', async (message) => {
         return message.delete().catch(() => {});
     }
 
-    // CONFIGURATION D'IMMUNITÉ : RETRAIT (!unwhitelist)
     if (command === 'unwhitelist') {
         const type = args[0];
         const targetId = args[1];
@@ -458,7 +433,6 @@ client.on('messageCreate', async (message) => {
         return message.delete().catch(() => {});
     }
 
-    // COMMANDE DE SIGNALEMENT / AVERTISSEMENT (!warn)
     if (command === 'warn') {
         const cible = message.mentions.members.first();
         if (!cible) return message.reply("❌ Syntaxe : `!warn @Pseudo [Raison]`");
@@ -469,7 +443,7 @@ client.on('messageCreate', async (message) => {
         countWarns++;
         warnDatabase.set(cible.id, countWarns);
 
-        message.channel.send(`⚠️ **${cible.displayName}** a reçu un avertissement pour : *${raison}* (${countWarns}/3).`);
+        message.channel.send(`⚠️ **${cible.displayName}** a reçu un avertissement pour : *${reason}* (${countWarns}/3).`);
         
         if (countWarns >= 3) {
             if (cible.kickable) {
@@ -481,7 +455,6 @@ client.on('messageCreate', async (message) => {
         return message.delete().catch(() => {});
     }
 
-    // ANNULATION D'AVERTISSEMENT (!unwarn)
     if (command === 'unwarn') {
         const cible = message.mentions.members.first();
         if (!cible) return message.reply("❌ Syntaxe : `!unwarn @Pseudo`");
@@ -493,7 +466,6 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ Avertissement révoqué pour **${cible.displayName}** (Total actuel : ${countWarns}).`);
     }
 
-    // REDUCTION AU SILENCE TEMPORAIRE (!mute)
     if (command === 'mute') {
         const cible = message.mentions.members.first();
         const minutes = parseInt(args[1]);
@@ -512,7 +484,6 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // RESTAURATION DE LA PAROLE (!unmute)
     if (command === 'unmute') {
         const cible = message.mentions.members.first();
         if (!cible) return message.reply("❌ Syntaxe : `!unmute @Pseudo`");
@@ -525,7 +496,6 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // EXPULSION SÉCURISÉE (!kick)
     if (command === 'kick') {
         const cible = message.mentions.members.first();
         if (!cible) return message.reply("❌ Syntaxe : `!kick @Pseudo [raison]`");
@@ -536,7 +506,6 @@ client.on('messageCreate', async (message) => {
         return message.channel.send(`🚨 **${cible.displayName}** a été expulsé. Motif : *${raison}*`);
     }
 
-    // BANNISSEMENT DÉFINITIF (!ban)
     if (command === 'ban') {
         const cible = message.mentions.members.first();
         if (!cible) return message.reply("❌ Syntaxe : `!ban @Pseudo [raison]`");
@@ -547,7 +516,6 @@ client.on('messageCreate', async (message) => {
         return message.channel.send(`🔨 **${cible.displayName}** a été banni définitivement. Motif : *${raison}*`);
     }
 
-    // TRANSMISSION FORCÉE DE MESSAGE PAR LE BOT (!message)
     if (command === 'message') {
         const salonCible = message.mentions.channels.first();
         args.shift();
@@ -566,7 +534,6 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // CONFIGURATION DES RÉACTIONS DE RÔLES REACTIONROLE (!react)
     if (command === 'react') {
         const salonCible = message.mentions.channels.first();
         args.shift();
@@ -591,7 +558,6 @@ client.on('messageCreate', async (message) => {
                 try {
                     const membre = await message.guild.members.fetch(user.id);
                     await membre.roles.add(roleCible);
-                    console.log(`Rôle ${roleCible.name} ajouté à ${membre.displayName}`);
                 } catch (err) {
                     console.error("Erreur lors de l'ajout du rôle :", err);
                 }
@@ -602,13 +568,12 @@ client.on('messageCreate', async (message) => {
                 try {
                     const membre = await message.guild.members.fetch(user.id);
                     await membre.roles.remove(roleCible);
-                    console.log(`Rôle ${roleCible.name} retiré à ${membre.displayName}`);
                 } catch (err) {
                     console.error("Erreur lors du retrait du rôle :", err);
                 }
             });
 
-            await message.reply(`✅ Système de Reaction Role configuré avec succès sur le message dans ${salonCible} !`);
+            await message.reply(`✅ Système de Reaction Role configuré sur le message dans ${salonCible} !`);
             await message.delete();
 
         } catch (error) {
@@ -618,7 +583,7 @@ client.on('messageCreate', async (message) => {
     }
 
     // ==========================================================
-    // 👑 SUB-SECTION : COMMANDES RÉSERVÉES AUX ADMINISTRATEURS
+    // 👑 COMMANDES ADMINISTRATEURS (TEXTUELLES)
     // ==========================================================
     const isServerAdmin = message.member.permissions.has(PermissionFlagsBits.Administrator);
 
@@ -712,12 +677,12 @@ client.login(process.env.DISCORD_TOKEN);
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName, options, member, guild } = interaction;
+    const { commandName, options, member } = interaction;
 
     // ==========================================
-    // 📖 COMMANDE : /HELP
+    // 📖 COMMANDE PROPRE : /UPHELP
     // ==========================================
-    if (commandName === 'unhelp') {
+    if (commandName === 'uphelp') { // 🎯 Correspondance exacte avec le registre
         const hasModPerms = member.permissions.has(PermissionFlagsBits.ManageMessages);
         const isServerAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
 
@@ -731,26 +696,25 @@ client.on('interactionCreate', async (interaction) => {
         // 1. Catégorie Publique
         embedHelp.addFields({
             name: '👥 Commandes Publiques',
-            value: '`/hello` - Saluer le bot.\n`/roll` - Lancer un dé à 6 faces.\n`!twitch` - Voir l\'état du stream Twitch.\n`!youtube` - Voir la dernière vidéo de la chaîne.'
+            value: '`/uphelp` - Affiche ce menu d\'aide interactif.\n`/hello` - Saluer le bot.\n`/roll` - Lancer un dé à 6 faces.\n`!twitch` - Statut du live Twitch.\n`!youtube` - Dernière vidéo mise en ligne.'
         });
 
-        // 2. Catégorie Staff Modérateur (Affichée uniquement si l'utilisateur a les droits)
+        // 2. Catégorie Staff Modérateur
         if (hasModPerms) {
             embedHelp.addFields({
                 name: '⚔️ Commandes de Modération',
-                value: '`!warn @membre [raison]` - Donner un avertissement.\n`!unwarn @membre` - Retirer un avertissement.\n`!mute @membre <minutes> [raison]` - Réduire un membre au silence.\n`!unmute @membre` - Redonner la parole.\n`!kick @membre [raison]` - Expulser.\n`!ban @membre [raison]` - Bannir.\n`!whitelist <role/user> <ID>` - Immuniser contre l\'Auto-Mod.\n`!unwhitelist <role/user> <ID>` - Retirer l\'immunité.'
+                value: '`!warn @membre [raison]` - Assigner un avertissement.\n`!unwarn @membre` - Retirer un avertissement.\n`!mute @membre <min> [raison]` - Exclusion temporaire.\n`!unmute @membre` - Retirer le mute.\n`!kick @membre [raison]` - Expulser du serveur.\n`!ban @membre [raison]` - Bannir du serveur.\n`!whitelist <role/user> <ID>` - Ajouter une immunité.\n`!unwhitelist <role/user> <ID>` - Retirer une immunité.'
             });
         }
 
-        // 3. Catégorie Administration Pure
+        // 3. Catégorie Administration
         if (isServerAdmin) {
             embedHelp.addFields({
                 name: '👑 Commandes d\'Administration',
-                value: '`/clear <1-99>` - Nettoyer les messages du salon.\n`!muteAll` - Verrouiller le salon complet.\n`!unmuteAll` - Déverrouiller le salon.'
+                value: '`/clear <1-99>` - Nettoyer les messages du salon.\n`!muteall` - Verrouiller l\'écriture du salon.\n`!unmuteall` - Réactiver l\'écriture du salon.'
             });
         }
 
-        // Envoi de l'embed en mode "éphémère" (uniquement visible par l'utilisateur qui a tapé la commande)
         return await interaction.reply({ embeds: [embedHelp], ephemeral: true });
     }
 
@@ -767,34 +731,6 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'roll') {
         const resultatDe = Math.floor(Math.random() * 6) + 1;
         return await interaction.reply(`🎲 Tu as lancé un dé et tu as obtenu un **${resultatDe}** !`);
-    }
-
-    // ==========================================
-    // 🗑️ COMMANDE : /CLEAR (Exemple de migration avec arguments)
-    // ==========================================
-    if (commandName === 'clear') {
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return await interaction.reply({ content: "❌ Seuls les administrateurs peuvent utiliser cette commande.", ephemeral: true });
-        }
-
-        const quantite = options.getInteger('nombre');
-        await interaction.reply({ content: `⏳ Traitement de la suppression de ${quantite} messages...`, ephemeral: true });
-
-        try {
-            const messages = await interaction.channel.messages.fetch({ limit: quantite });
-            const limite14Jours = Date.now() - (14 * 24 * 60 * 60 * 1000);
-            const filtrés = messages.filter(msg => msg.createdTimestamp > limite14Jours);
-
-            if (filtrés.size > 0) {
-                await interaction.channel.bulkDelete(filtrés);
-                await interaction.followUp({ content: `🗑️ **${filtrés.size}** messages récents ont été supprimés avec succès.`, ephemeral: true });
-            } else {
-                await interaction.followUp({ content: "❌ Aucun message n'a pu être supprimé (ils datent tous de plus de 14 jours).", ephemeral: true });
-            }
-        } catch (error) {
-            console.error(error);
-            await interaction.followUp({ content: "❌ Une erreur est survenue lors du clear.", ephemeral: true });
-        }
     }
 });
 // #endregion
