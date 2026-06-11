@@ -20,6 +20,53 @@ const client = new Client({
     ]
 });
 
+// #region 1. CONFIGURATION INITIALE & REGISTRE SLASH COMMANDS
+const { REST, Routes, SlashCommandBuilder } = require('discord.js');
+
+// Définition des commandes à enregistrer auprès de Discord
+const slashCommandsJSON = [
+    // Commande /help
+    new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('Affiche la liste de toutes les commandes disponibles sur le bot UpFox.'),
+
+    // Commande /hello
+    new SlashCommandBuilder()
+        .setName('hello')
+        .setDescription('Dit bonjour au bot UpFox !'),
+
+    // Commande /roll
+    new SlashCommandBuilder()
+        .setName('roll')
+        .setDescription('Lance un dé à 6 faces.'),
+
+    // Commande /clear
+    new SlashCommandBuilder()
+        .setName('clear')
+        .setDescription('Supprime un nombre de messages spécifié dans le salon (Admin).')
+        .addIntegerOption(option => 
+            option.setName('nombre')
+                .setDescription('Le nombre de messages à effacer (1-99)')
+                .setRequired(true))
+].map(command => command.toJSON());
+
+// Fonction asynchrone pour envoyer les commandes à l'API de Discord
+client.once('clientReady', async () => {
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    try {
+        console.log('🔄 Enregistrement des Slash Commands auprès de Discord...');
+        // Application globale des commandes sur l'ID de ton application
+        await rest.put(
+            Routes.applicationCommands(client.user.id),
+            { body: slashCommandsJSON },
+        );
+        console.log('✅ Slash Commands enregistrées avec succès !');
+    } catch (error) {
+        console.error('❌ Erreur lors de l\'enregistrement des Slash Commands :', error);
+    }
+});
+// #endregion
+
 const PREFIX = '!';
 // #endregion
 
@@ -659,4 +706,95 @@ process.on('unhandledRejection', error => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+// #endregion
+
+// #region 10. ÉVÉNEMENT : INTERACTION CREATE (SLASH COMMANDS)
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+
+    const { commandName, options, member, guild } = interaction;
+
+    // ==========================================
+    // 📖 COMMANDE : /HELP
+    // ==========================================
+    if (commandName === 'help') {
+        const hasModPerms = member.permissions.has(PermissionFlagsBits.ManageMessages);
+        const isServerAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
+
+        const embedHelp = new EmbedBuilder()
+            .setColor('#5865F2')
+            .setTitle('🦊 Centre d\'Aide du Bot UpFox')
+            .setDescription('Voici la liste des commandes disponibles, triées par catégorie et selon vos permissions.')
+            .setThumbnail(client.user.displayAvatarURL())
+            .setTimestamp();
+
+        // 1. Catégorie Publique
+        embedHelp.addFields({
+            name: '👥 Commandes Publiques',
+            value: '`/hello` - Saluer le bot.\n`/roll` - Lancer un dé à 6 faces.\n`!twitch` - Voir l\'état du stream Twitch.\n`!youtube` - Voir la dernière vidéo de la chaîne.'
+        });
+
+        // 2. Catégorie Staff Modérateur (Affichée uniquement si l'utilisateur a les droits)
+        if (hasModPerms) {
+            embedHelp.addFields({
+                name: '⚔️ Commandes de Modération',
+                value: '`!warn @membre [raison]` - Donner un avertissement.\n`!unwarn @membre` - Retirer un avertissement.\n`!mute @membre <minutes> [raison]` - Réduire un membre au silence.\n`!unmute @membre` - Redonner la parole.\n`!kick @membre [raison]` - Expulser.\n`!ban @membre [raison]` - Bannir.\n`!whitelist <role/user> <ID>` - Immuniser contre l\'Auto-Mod.\n`!unwhitelist <role/user> <ID>` - Retirer l\'immunité.'
+            });
+        }
+
+        // 3. Catégorie Administration Pure
+        if (isServerAdmin) {
+            embedHelp.addFields({
+                name: '👑 Commandes d\'Administration',
+                value: '`/clear <1-99>` - Nettoyer les messages du salon.\n`!muteAll` - Verrouiller le salon complet.\n`!unmuteAll` - Déverrouiller le salon.'
+            });
+        }
+
+        // Envoi de l'embed en mode "éphémère" (uniquement visible par l'utilisateur qui a tapé la commande)
+        return await interaction.reply({ embeds: [embedHelp], ephemeral: true });
+    }
+
+    // ==========================================
+    // 👋 COMMANDE : /HELLO
+    // ==========================================
+    if (commandName === 'hello') {
+        return await interaction.reply(`Salut ${interaction.user.username} ! 👋`);
+    }
+
+    // ==========================================
+    // 🎲 COMMANDE : /ROLL
+    // ==========================================
+    if (commandName === 'roll') {
+        const resultatDe = Math.floor(Math.random() * 6) + 1;
+        return await interaction.reply(`🎲 Tu as lancé un dé et tu as obtenu un **${resultatDe}** !`);
+    }
+
+    // ==========================================
+    // 🗑️ COMMANDE : /CLEAR (Exemple de migration avec arguments)
+    // ==========================================
+    if (commandName === 'clear') {
+        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return await interaction.reply({ content: "❌ Seuls les administrateurs peuvent utiliser cette commande.", ephemeral: true });
+        }
+
+        const quantite = options.getInteger('nombre');
+        await interaction.reply({ content: `⏳ Traitement de la suppression de ${quantite} messages...`, ephemeral: true });
+
+        try {
+            const messages = await interaction.channel.messages.fetch({ limit: quantite });
+            const limite14Jours = Date.now() - (14 * 24 * 60 * 60 * 1000);
+            const filtrés = messages.filter(msg => msg.createdTimestamp > limite14Jours);
+
+            if (filtrés.size > 0) {
+                await interaction.channel.bulkDelete(filtrés);
+                await interaction.followUp({ content: `🗑️ **${filtrés.size}** messages récents ont été supprimés avec succès.`, ephemeral: true });
+            } else {
+                await interaction.followUp({ content: "❌ Aucun message n'a pu être supprimé (ils datent tous de plus de 14 jours).", ephemeral: true });
+            }
+        } catch (error) {
+            console.error(error);
+            await interaction.followUp({ content: "❌ Une erreur est survenue lors du clear.", ephemeral: true });
+        }
+    }
+});
 // #endregion
