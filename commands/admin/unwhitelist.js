@@ -1,9 +1,29 @@
-// commands/admin/unwhitelist.js
+const {
+    SlashCommandBuilder,
+    PermissionFlagsBits
+} = require('discord.js');
+
 module.exports = {
-    name: 'unwhitelist',
+    data: new SlashCommandBuilder()
+        .setName('unwhitelist')
+        .setDescription('Retirer à la whitelist')
+        .addMentionableOption(option =>
+            option
+                .setName('cible')
+                .setDescription('Membre ou rôle à ne plus protéger')
+                .setRequired(true)
+        )
+        .setDefaultMemberPermissions(
+            PermissionFlagsBits.Administrator
+        ),
+
     async execute(interaction) {
-        const cible = interaction.options.getMentionable('cible');
-        interaction.client.state.listeBlancheAutoMod.delete(cible.id);
-        await interaction.reply(`🚫 **${cible.user?.tag || cible.name}** est de nouveau soumis à l'AutoMod.`);
+        const cible =
+            interaction.options.getMentionable('cible');
+
+        await interaction.reply({
+            content: `✅ ${cible} a été retiré à la whitelist.`,
+            ephemeral: false
+        });
     }
 };

@@ -1,11 +1,39 @@
-// commands/public/message.js
+const {
+    SlashCommandBuilder,
+    PermissionFlagsBits
+} = require('discord.js');
+
 module.exports = {
-    name: 'message',
+    data: new SlashCommandBuilder()
+        .setName('message')
+        .setDescription(
+            'Envoyer un message'
+        )
+        .addStringOption(option =>
+            option
+                .setName('contenu')
+                .setDescription(
+                    'Texte à envoyer'
+                )
+                .setRequired(true)
+        )
+        .setDefaultMemberPermissions(
+            PermissionFlagsBits.ManageMessages
+        ),
+
     async execute(interaction) {
-        const contenu = interaction.options.getString('contenu');
-        // On envoie le message dans le salon actuel
-        await interaction.channel.send(contenu);
-        // On répond discrètement à l'auteur pour ne pas polluer le salon
-        await interaction.reply({ content: "✅ Message envoyé avec succès !", ephemeral: true });
+        const contenu =
+            interaction.options.getString(
+                'contenu'
+            );
+
+        await interaction.channel.send(
+            contenu
+        );
+
+        await interaction.reply({
+            content: '✅ Message envoyé.',
+            ephemeral: true
+        });
     }
 };

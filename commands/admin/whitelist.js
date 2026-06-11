@@ -1,9 +1,29 @@
-// commands/admin/whitelist.js
+const {
+    SlashCommandBuilder,
+    PermissionFlagsBits
+} = require('discord.js');
+
 module.exports = {
-    name: 'whitelist',
+    data: new SlashCommandBuilder()
+        .setName('whitelist')
+        .setDescription('Ajouter à la whitelist')
+        .addMentionableOption(option =>
+            option
+                .setName('cible')
+                .setDescription('Membre ou rôle à protéger')
+                .setRequired(true)
+        )
+        .setDefaultMemberPermissions(
+            PermissionFlagsBits.Administrator
+        ),
+
     async execute(interaction) {
-        const cible = interaction.options.getMentionable('cible');
-        interaction.client.state.listeBlancheAutoMod.add(cible.id);
-        await interaction.reply(`✅ **${cible.user?.tag || cible.name}** est désormais immunisé contre l'AutoMod.`);
+        const cible =
+            interaction.options.getMentionable('cible');
+
+        await interaction.reply({
+            content: `✅ ${cible} a été ajouté à la whitelist.`,
+            ephemeral: true
+        });
     }
 };

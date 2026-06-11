@@ -1,10 +1,13 @@
-// commands/public/hello.js
+const { SlashCommandBuilder } = require('discord.js');
+
 module.exports = {
-    name: 'hello',
+    data: new SlashCommandBuilder()
+        .setName('hello')
+        .setDescription('Dire bonjour'),
+
     async execute(interaction) {
-        await interaction.reply({ 
-            content: `👋 Salut à toi, ${interaction.user} !`, 
-            ephemeral: true 
-        });
+        await interaction.reply(
+            `👋 Salut ${interaction.user}!`
+        );
     }
 };
