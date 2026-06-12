@@ -1,48 +1,58 @@
-// commands/moderation/react.js
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, MessageFlags } = require('discord.js');
 
 module.exports = {
-    name: 'react',
     data: new SlashCommandBuilder()
         .setName('react')
-        .setDescription('Configure une réaction pour donner un rôle')
-        .addRoleOption(option => 
-            option.setName('role').setDescription('Le rôle à donner').setRequired(true))
-        .addStringOption(option => 
-            option.setName('emoji').setDescription('L\'émoji de réaction').setRequired(true))
-        .addStringOption(option => 
-            option.setName('message_id').setDescription('L\'ID du message cible').setRequired(true))
+        .setDescription('Configure un rôle par réaction')
         .addChannelOption(option => 
-            option.setName('channel').setDescription('Le salon du message').setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
+            option.setName('salon')
+                .setDescription('Le salon où se trouve le message')
+                .addChannelTypes(ChannelType.GuildText)
+                .setRequired(true))
+        .addStringOption(option => 
+            option.setName('message_id')
+                .setDescription('ID du message cible')
+                .setRequired(true))
+        .addRoleOption(option => 
+            option.setName('role')
+                .setDescription('Le rôle à attribuer')
+                .setRequired(true))
+        .addStringOption(option => 
+            option.setName('emoji')
+                .setDescription('L\'émoji à utiliser (ex: 🍎)')
+                .setRequired(true)),
 
     async execute(interaction) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+        const salon = interaction.options.getChannel('salon');
+        const messageId = interaction.options.getString('message_id');
         const role = interaction.options.getRole('role');
         const emoji = interaction.options.getString('emoji');
-        const messageId = interaction.options.getString('message_id');
-        const channel = interaction.options.getChannel('channel');
 
         try {
-            // 1. Récupérer le message
-            const targetMessage = await channel.messages.fetch(messageId);
+            // 1. Récupération du message
+            const message = await salon.messages.fetch(messageId);
             
-            // 2. Réagir au message pour montrer que ça a fonctionné
-            await targetMessage.react(emoji);
+            // 2. Ajout de la réaction par le bot
+            await message.react(emoji);
 
-            // 3. Sauvegarder dans ton "client.state" (mémoire temporaire)
-            // On utilise une Map : ID_Message -> { roleId, emoji }
-            if (!interaction.client.state.reactRoles) {
-                interaction.client.state.reactRoles = new Map();
-            }
-            interaction.client.state.reactRoles.set(messageId, { roleId: role.id, emoji: emoji });
-
-            await interaction.reply({ 
-                content: `✅ Configuration terminée ! Réagir avec ${emoji} donnera le rôle **${role.name}**.`, 
-                ephemeral: true 
+            // 3. Stockage en mémoire (pour que le bot sache quel rôle donner plus tard)
+            // Note : client.state.reactRoles est une Map définie dans index.js
+            interaction.client.state.reactRoles.set(message.id, {
+                roleId: role.id,
+                emoji: emoji
             });
+
+            await interaction.editReply({ 
+                content: `✅ Réaction configurée ! Si quelqu'un clique sur ${emoji}, il recevra le rôle **${role.name}**.` 
+            });
+
         } catch (error) {
-            console.error(error);
-            await interaction.reply({ content: '❌ Impossible de trouver le message ou de réagir.', ephemeral: true });
+            console.error('Erreur dans react.js :', error);
+            await interaction.editReply({ 
+                content: `❌ Impossible de configurer la réaction. Vérifiez que l'ID du message est correct et que j'ai la permission de voir le salon ${salon}.` 
+            });
         }
-    }
+    },
 };
